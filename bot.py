@@ -1,0 +1,2216 @@
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, InlineQueryHandler, PreCheckoutQueryHandler, filters
+from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, InlineQueryResultArticle, InputTextMessageContent
+from io import BytesIO
+from state import user_state
+from utils import extract_text_from_url
+from keyboards import model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb
+from dream_api import generate_dream
+from openai_helper import build_final_prompt, enhance_prompt_for_generation
+from style_transfer import apply_style_transfer
+from style_guide import generate_with_style_guide
+from sketch import generate_from_sketch
+from user_limits import can_generate, use_generation, get_user_stats, get_all_users, add_generations, register_referral, reward_referrer, get_referral_stats
+from image_library import add_to_history, get_user_history, get_favorites, toggle_favorite, search_history, get_history_stats, clear_history
+from presets import create_preset, get_user_presets, get_preset, delete_preset
+from watermark import add_watermark
+from payments import get_all_packages_message, format_package_message, create_cryptobot_invoice, get_package_info, PACKAGES
+from ai_tools import upscale_image, remove_background, create_variations, inpaint_image, restore_face
+from settings import TELEGRAM_BOT_TOKEN
+
+# ID администратора
+ADMIN_ID = 65876198
+
+async def setup_commands(application):
+    """Настраивает меню команд для обычных пользователей и админа"""
+
+    # Команды для обычных пользователей
+    user_commands = [
+        BotCommand("start", "Начать работу с ботом"),
+        BotCommand("new", "Создать новое изображение"),
+        BotCommand("styletransfer", "Перенос стиля между изображениями"),
+        BotCommand("styleguide", "Генерация по стилю референса"),
+        BotCommand("sketch", "Генерация из наброска"),
+        BotCommand("profile", "Мой профиль и статистика"),
+        BotCommand("buy", "Купить генерации"),
+        BotCommand("presets", "Управление пресетами параметров"),
+        BotCommand("help", "Справка и помощь"),
+        BotCommand("lib", "Библиотека изображений"),
+    ]
+
+    # Команды для админа (включают все обычные + админские)
+    admin_commands = user_commands + [
+        BotCommand("admin_users", "📊 Список всех пользователей"),
+        BotCommand("admin_add", "➕ Добавить генерации пользователю"),
+    ]
+
+    # Устанавливаем команды для обычных пользователей (по умолчанию)
+    await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
+
+    # Устанавливаем команды для админа
+    await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_ID))
+
+async def start(update, context):
+    uid = update.effective_user.id
+
+    # Обработка реферальной ссылки
+    if context.args:
+        try:
+            referrer_id = int(context.args[0])
+            if register_referral(uid, referrer_id):
+                await update.message.reply_text(
+                    "🎉 Вы зарегистрированы по реферальной ссылке!\n\n"
+                    "Когда вы создадите первое изображение, ваш друг получит +5 бесплатных генераций!"
+                )
+        except:
+            pass  # Невалидный реферальный код
+
+    welcome_msg = """👋 Привет! Я бот для генерации изображений с AI.
+
+🎨 <b>Как пользоваться:</b>
+• Отправь текст - создам изображение по описанию
+• Отправь ссылку - создам обложку к статье
+• Отправь фото - использую как референс
+
+⚡️ <b>Выбери параметры:</b>
+1. Модель SD 3.5 (Large, Turbo, Medium, Flash)
+2. Формат изображения (1:1, 16:9, 9:16 и др.)
+
+🤖 <b>Используется:</b>
+• Stable Diffusion 3.5 для генерации
+• ChatGPT-4o для обработки промптов
+• Автоматический перевод на английский
+
+💎 <b>Лимит:</b> 10 бесплатных генераций
+🎁 <b>Бонус:</b> Приглашай друзей и получай +5 генераций за каждого!
+
+📋 <b>Команды:</b>
+/new - Начать новое изображение
+/styletransfer - Перенос стиля между изображениями
+/styleguide - Генерация по стилю referencer
+/sketch - Генерация из наброска
+/help - Помощь
+/profile - Мой профиль и реферальная ссылка
+/lib - Библиотека изображений"""
+
+    await update.message.reply_text(welcome_msg, parse_mode="HTML")
+
+async def new_image(update, context):
+    """Команда /new - начать новое изображение"""
+    uid = update.effective_user.id
+    user_state.pop(uid, None)
+    await update.message.reply_text("🆕 Готов к созданию нового изображения!\n\nПришли текст, ссылку или фото с описанием.")
+
+async def help_command(update, context):
+    """Команда /help - открыть полную справку в Mini App"""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    help_msg = """📖 <b>Справка по Image Gen Bot</b>
+
+🎨 Бот для создания изображений с AI
+🤖 Работает на Stable Diffusion 3.5 и ChatGPT-4o
+
+<b>Как создать изображение:</b>
+1. Отправь текст или ссылку
+2. Выбери модель SD 3.5
+3. Выбери формат изображения
+4. Нажми "Создать"
+
+<b>Команды:</b>
+/new - Генерация с параметрами
+/styletransfer - Перенос стиля
+/styleguide - Генерация в стиле
+/sketch - Из наброска в детали
+/presets - Управление пресетами
+/lib - Библиотека изображений
+
+💎 <b>Лимит:</b> 10 бесплатных генераций
+
+📱 Нажмите кнопку ниже для полной справки с примерами и подробными инструкциями!"""
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "📚 Открыть полную справку",
+            web_app={"url": "https://tools.uspeshnyy.ru/imagegenbot/help.html"}
+        )]
+    ])
+
+    await update.message.reply_text(help_msg, reply_markup=keyboard, parse_mode="HTML")
+
+async def profile_command(update, context):
+    """Команда /profile - показать профиль пользователя"""
+    uid = update.effective_user.id
+    username = update.effective_user.username or "Неизвестно"
+    first_name = update.effective_user.first_name or ""
+
+    # Получаем статистику генераций
+    stats = get_user_stats(uid)
+    used = stats["used"]
+    remaining = stats["remaining"]
+    first_gen = stats["first_generation"]
+
+    # Получаем статистику рефералов
+    ref_stats = get_referral_stats(uid)
+
+    # Получаем имя бота для реферальной ссылки
+    bot_username = (await context.bot.get_me()).username
+    referral_link = f"https://t.me/{bot_username}?start={uid}"
+
+    profile_msg = f"""👤 <b>Профиль</b>
+
+<b>Имя:</b> {first_name}
+<b>Username:</b> @{username}
+<b>ID:</b> {uid}
+
+📊 <b>Статистика генераций:</b>
+💎 Использовано: {used} из 10
+💎 Осталось: {remaining}"""
+
+    if first_gen:
+        profile_msg += f"\n📅 Первая генерация: {first_gen}"
+
+    profile_msg += f"""
+
+🎁 <b>Реферальная программа:</b>
+👥 Приглашено друзей: {ref_stats['referrals_count']}
+✅ Сделали генерацию: {ref_stats['referrals_with_generations']}
+💰 Заработано генераций: {ref_stats['referrals_with_generations'] * 5}
+
+🔗 <b>Ваша реферальная ссылка:</b>
+{referral_link}
+
+<i>Приглашайте друзей и получайте +5 генераций за каждого, кто создаст хотя бы одно изображение!</i>"""
+
+    profile_msg += "\n\n🎨 <b>Текущий проект:</b>\n"
+
+    # Проверяем, есть ли активный промпт
+    if uid in user_state and user_state[uid].get("prompt"):
+        st = user_state[uid]
+        profile_msg += f"Промпт: {st['prompt'][:50]}..."
+    else:
+        profile_msg += "Нет активного проекта"
+
+    await update.message.reply_text(profile_msg, parse_mode="HTML")
+
+async def library_command(update, context):
+    """Команда /lib - показать библиотеку изображений"""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    uid = update.effective_user.id
+
+    # Получаем статистику
+    stats = get_history_stats(uid)
+    history = get_user_history(uid, limit=5)
+    favorites_count = stats["favorites"]
+
+    if stats["total"] == 0:
+        lib_msg = """📚 <b>Библиотека изображений</b>
+
+История пуста. Создайте первое изображение!
+
+💡 Используйте /new для создания"""
+        await update.message.reply_text(lib_msg, parse_mode="HTML")
+        return
+
+    lib_msg = f"""📚 <b>Библиотека изображений</b>
+
+📊 <b>Статистика:</b>
+• Всего генераций: {stats['total']}
+⭐ Избранное: {favorites_count}
+🎨 Любимая модель: {stats['most_used_model'] or 'N/A'}
+🖌 Любимый стиль: {stats['most_used_style'] or 'N/A'}
+
+📝 <b>Последние генерации:</b>
+"""
+
+    # Показываем последние 5
+    for i, gen in enumerate(history[:5], 1):
+        date = gen['date'][:10]  # Только дата
+        prompt_preview = gen['prompt'][:40] + "..." if len(gen['prompt']) > 40 else gen['prompt']
+        fav_mark = "⭐ " if gen.get('is_favorite', False) else ""
+        lib_msg += f"\n{i}. {fav_mark}{prompt_preview}\n   📅 {date} | {gen['model']}\n"
+
+    # Кнопки управления
+    keyboard = [
+        [
+            InlineKeyboardButton("📜 Вся история", callback_data="lib_history_0"),
+            InlineKeyboardButton("⭐ Избранное", callback_data="lib_favorites")
+        ],
+        [
+            InlineKeyboardButton("🔍 Поиск", callback_data="lib_search"),
+            InlineKeyboardButton("🗑 Очистить", callback_data="lib_clear")
+        ]
+    ]
+
+    await update.message.reply_text(
+        lib_msg,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+
+async def presets_command(update, context):
+    """Команда /presets - управление пресетами"""
+    uid = update.effective_user.id
+
+    user_presets = get_user_presets(uid)
+    presets_count = len(user_presets)
+
+    msg = f"""💾 <b>Управление пресетами</b>
+
+Пресеты позволяют сохранять любимые комбинации параметров (модель + формат + стиль + negative prompt) для быстрого использования.
+
+📌 <b>Ваши пресеты:</b> {presets_count}
+
+💡 <b>Как использовать:</b>
+• Сохраните текущие настройки
+• Загрузите пресет при создании изображения
+• Редактируйте и удаляйте пресеты"""
+
+    await update.message.reply_text(
+        msg,
+        reply_markup=presets_main_kb(),
+        parse_mode="HTML"
+    )
+
+async def buy_command(update, context):
+    """Команда /buy - купить генерации"""
+    uid = update.effective_user.id
+
+    # Получаем текущий баланс
+    stats = get_user_stats(uid)
+    remaining = stats["remaining"]
+
+    msg = f"""💎 <b>Купить генерации</b>
+
+📊 <b>Ваш баланс:</b> {remaining} генераций
+
+{get_all_packages_message()}"""
+
+    await update.message.reply_text(
+        msg,
+        reply_markup=packages_kb(),
+        parse_mode="HTML"
+    )
+
+async def admin_users_command(update, context):
+    """Команда /admin_users - показать всех пользователей (только для админа)"""
+    uid = update.effective_user.id
+
+    if uid != ADMIN_ID:
+        await update.message.reply_text("❌ У вас нет прав для использования этой команды.")
+        return
+
+    users = get_all_users()
+
+    if not users:
+        await update.message.reply_text("📊 Пока нет пользователей с генерациями.")
+        return
+
+    # Формируем список пользователей
+    msg = "📊 <b>Все пользователи:</b>\n\n"
+
+    for user in users:
+        msg += f"<b>ID:</b> {user['user_id']}\n"
+        msg += f"💎 Использовано: {user['used']} | Осталось: {user['remaining']}\n"
+        if user['first_generation'] != "Не было":
+            msg += f"📅 Первая генерация: {user['first_generation']}\n"
+        msg += "\n"
+
+    # Telegram имеет лимит на длину сообщения (4096 символов)
+    if len(msg) > 4000:
+        # Разбиваем на части
+        parts = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
+        for part in parts:
+            await update.message.reply_text(part, parse_mode="HTML")
+    else:
+        await update.message.reply_text(msg, parse_mode="HTML")
+
+async def admin_add_command(update, context):
+    """Команда /admin_add - добавить генерации пользователю (только для админа)
+    Формат: /admin_add USER_ID AMOUNT
+    """
+    uid = update.effective_user.id
+
+    if uid != ADMIN_ID:
+        await update.message.reply_text("❌ У вас нет прав для использования этой команды.")
+        return
+
+    # Проверяем аргументы
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "❌ Неверный формат команды.\n\n"
+            "<b>Использование:</b>\n"
+            "/admin_add USER_ID AMOUNT\n\n"
+            "<b>Пример:</b>\n"
+            "/admin_add 123456789 5",
+            parse_mode="HTML"
+        )
+        return
+
+    try:
+        target_user_id = int(context.args[0])
+        amount = int(context.args[1])
+
+        if amount <= 0:
+            await update.message.reply_text("❌ Количество должно быть положительным числом.")
+            return
+
+        # Добавляем генерации
+        remaining = add_generations(target_user_id, amount)
+
+        await update.message.reply_text(
+            f"✅ Успешно добавлено {amount} генераций пользователю {target_user_id}\n\n"
+            f"💎 У пользователя теперь осталось: {remaining} генераций",
+            parse_mode="HTML"
+        )
+
+    except ValueError:
+        await update.message.reply_text("❌ USER_ID и AMOUNT должны быть числами.")
+
+async def style_transfer_command(update, context):
+    """Команда /styletransfer - начать процесс переноса стиля"""
+    uid = update.effective_user.id
+
+    # Очищаем состояние и инициализируем процесс style transfer
+    user_state[uid]["style_transfer"] = {
+        "active": True,
+        "step": "init_image"
+    }
+
+    await update.message.reply_text(
+        "🎨 <b>Style Transfer</b>\n\n"
+        "<b>Шаг 1/2:</b> Загрузите исходное изображение, к которому нужно применить стиль.",
+        parse_mode="HTML"
+    )
+
+async def style_guide_command(update, context):
+    """Команда /styleguide - генерация изображения на основе стиля референса"""
+    uid = update.effective_user.id
+
+    # Очищаем состояние и инициализируем процесс style guide
+    user_state[uid]["style_guide"] = {
+        "active": True,
+        "step": "style_image"
+    }
+
+    await update.message.reply_text(
+        "🎨 <b>Style Guide</b>\n\n"
+        "Загрузите изображение, стиль которого нужно использовать для генерации.",
+        parse_mode="HTML"
+    )
+
+async def sketch_command(update, context):
+    """Команда /sketch - генерация изображения из наброска"""
+    uid = update.effective_user.id
+
+    # Очищаем состояние и инициализируем процесс sketch
+    user_state[uid]["sketch"] = {
+        "active": True,
+        "step": "sketch_image"
+    }
+
+    await update.message.reply_text(
+        "✏️ <b>Sketch Control</b>\n\n"
+        "Загрузите изображение наброска/скетча, который нужно использовать для генерации.",
+        parse_mode="HTML"
+    )
+
+async def handle_message(update, context):
+    uid = update.effective_user.id
+
+    # Проверяем, активен ли процесс Style Transfer
+    if user_state[uid].get("style_transfer", {}).get("active"):
+        st_state = user_state[uid]["style_transfer"]
+
+        # Обработка загрузки init_image
+        if st_state["step"] == "init_image" and update.message.photo:
+            file = await update.message.photo[-1].get_file()
+            downloaded_file = await file.download_to_drive()
+            st_state["init_image"] = downloaded_file
+            st_state["step"] = "style_image"
+            await update.message.reply_text(
+                "✅ Исходное изображение получено!\n\n"
+                "<b>Шаг 2/2:</b> Теперь загрузите изображение, стиль которого нужно скопировать.",
+                parse_mode="HTML"
+            )
+            return
+
+        # Обработка загрузки style_image
+        if st_state["step"] == "style_image" and update.message.photo:
+            file = await update.message.photo[-1].get_file()
+            downloaded_file = await file.download_to_drive()
+            st_state["style_image"] = downloaded_file
+            st_state["step"] = "prompt"
+            await update.message.reply_text(
+                "✅ Изображение стиля получено!\n\n"
+                "Теперь введите параметры:\n\n"
+                "<b>Prompt</b> (текстовое описание, можно оставить пустым):\n"
+                "Отправьте текст или '-' для пропуска.",
+                parse_mode="HTML"
+            )
+            return
+
+        # Обработка текстовых параметров
+        if st_state["step"] == "prompt":
+            text = update.message.text.strip()
+            # Если пустой промпт, используем дефолтный
+            st_state["prompt"] = text if text and text != "-" else "high quality image"
+            st_state["step"] = "negative_prompt"
+            await update.message.reply_text(
+                "<b>Negative Prompt</b> (что исключить, можно оставить пустым):\n"
+                "Отправьте текст или '-' для пропуска.",
+                parse_mode="HTML"
+            )
+            return
+
+        if st_state["step"] == "negative_prompt":
+            text = update.message.text.strip()
+            st_state["negative_prompt"] = "" if text == "-" else text
+            st_state["step"] = "style_strength"
+            await update.message.reply_text(
+                "<b>Style Strength</b> (сила применения стиля, 0.1-1.0):\n"
+                "Пример: 0.8",
+                parse_mode="HTML"
+            )
+            return
+
+        if st_state["step"] == "style_strength":
+            try:
+                value = float(update.message.text.strip())
+                if 0.1 <= value <= 1.0:
+                    st_state["style_strength"] = value
+                    st_state["step"] = "composition_fidelity"
+                    await update.message.reply_text(
+                        "<b>Composition Fidelity</b> (точность композиции, 0.1-1.0):\n"
+                        "Пример: 0.9",
+                        parse_mode="HTML"
+                    )
+                    return
+                else:
+                    await update.message.reply_text("❌ Значение должно быть от 0.1 до 1.0")
+                    return
+            except:
+                await update.message.reply_text("❌ Введите число от 0.1 до 1.0")
+                return
+
+        if st_state["step"] == "composition_fidelity":
+            try:
+                value = float(update.message.text.strip())
+                if 0.1 <= value <= 1.0:
+                    st_state["composition_fidelity"] = value
+                    st_state["step"] = "change_strength"
+                    await update.message.reply_text(
+                        "<b>Change Strength</b> (сила изменений, 0.1-1.0):\n"
+                        "Пример: 0.9",
+                        parse_mode="HTML"
+                    )
+                    return
+                else:
+                    await update.message.reply_text("❌ Значение должно быть от 0.1 до 1.0")
+                    return
+            except:
+                await update.message.reply_text("❌ Введите число от 0.1 до 1.0")
+                return
+
+        if st_state["step"] == "change_strength":
+            try:
+                value = float(update.message.text.strip())
+                if 0.1 <= value <= 1.0:
+                    st_state["change_strength"] = value
+
+                    # Все параметры собраны, запускаем генерацию
+                    await update.message.reply_text("⏳ Применение стиля...")
+
+                    result = apply_style_transfer(
+                        init_image_path=st_state["init_image"],
+                        style_image_path=st_state["style_image"],
+                        prompt=st_state.get("prompt", ""),
+                        negative_prompt=st_state.get("negative_prompt", ""),
+                        style_strength=st_state.get("style_strength", 1.0),
+                        composition_fidelity=st_state.get("composition_fidelity", 0.9),
+                        change_strength=st_state.get("change_strength", 0.9)
+                    )
+
+                    if isinstance(result, str):
+                        # Ошибка
+                        await update.message.reply_text(f"❌ {result}")
+                    else:
+                        # Успех - отправляем изображение с watermark
+                        watermarked_image = add_watermark(result)
+                        await context.bot.send_photo(uid, watermarked_image)
+                        await context.bot.send_message(uid, "✅ Style Transfer завершен!")
+
+                    # Очищаем состояние
+                    user_state[uid]["style_transfer"] = {"active": False}
+                    return
+                else:
+                    await update.message.reply_text("❌ Значение должно быть от 0.1 до 1.0")
+                    return
+            except:
+                await update.message.reply_text("❌ Введите число от 0.1 до 1.0")
+                return
+
+    # Проверяем, активен ли процесс Style Guide
+    if user_state[uid].get("style_guide", {}).get("active"):
+        sg_state = user_state[uid]["style_guide"]
+
+        # Обработка загрузки style_image
+        if sg_state["step"] == "style_image" and update.message.photo:
+            file = await update.message.photo[-1].get_file()
+            downloaded_file = await file.download_to_drive()
+            sg_state["style_image"] = downloaded_file
+            sg_state["step"] = "prompt"
+            await update.message.reply_text(
+                "✅ Изображение стиля получено!\n\n"
+                "Теперь введите <b>Prompt</b> (текстовое описание того, что нужно сгенерировать):",
+                parse_mode="HTML"
+            )
+            return
+
+        # Обработка текстовых параметров
+        if sg_state["step"] == "prompt":
+            text = update.message.text.strip()
+            if not text or text == "-":
+                await update.message.reply_text("❌ Prompt обязателен для Style Guide!")
+                return
+            sg_state["prompt"] = text
+            sg_state["step"] = "negative_prompt"
+            await update.message.reply_text(
+                "<b>Negative Prompt</b> (что исключить, можно оставить пустым):\n"
+                "Отправьте текст или '-' для пропуска.",
+                parse_mode="HTML"
+            )
+            return
+
+        if sg_state["step"] == "negative_prompt":
+            text = update.message.text.strip()
+            sg_state["negative_prompt"] = "" if text == "-" else text
+            sg_state["step"] = "aspect_ratio"
+            await update.message.reply_text(
+                "<b>Aspect Ratio</b> (формат изображения):\n"
+                "Введите один из: 1:1, 21:9, 16:9, 3:2, 5:4, 4:5, 2:3, 9:16, 9:21\n"
+                "Пример: 1:1",
+                parse_mode="HTML"
+            )
+            return
+
+        if sg_state["step"] == "aspect_ratio":
+            text = update.message.text.strip()
+            valid_ratios = ["1:1", "21:9", "16:9", "3:2", "5:4", "4:5", "2:3", "9:16", "9:21"]
+            if text in valid_ratios:
+                sg_state["aspect_ratio"] = text
+                sg_state["step"] = "fidelity"
+                await update.message.reply_text(
+                    "<b>Fidelity</b> (точность следования стилю, 0.1-1.0):\n"
+                    "Пример: 0.5",
+                    parse_mode="HTML"
+                )
+                return
+            else:
+                await update.message.reply_text(f"❌ Выберите один из: {', '.join(valid_ratios)}")
+                return
+
+        if sg_state["step"] == "fidelity":
+            try:
+                value = float(update.message.text.strip())
+                if 0.1 <= value <= 1.0:
+                    sg_state["fidelity"] = value
+
+                    # Все параметры собраны, запускаем генерацию
+                    await update.message.reply_text("⏳ Генерация изображения в стиле референса...")
+
+                    result = generate_with_style_guide(
+                        image_path=sg_state["style_image"],
+                        prompt=sg_state["prompt"],
+                        negative_prompt=sg_state.get("negative_prompt", ""),
+                        aspect_ratio=sg_state.get("aspect_ratio", "1:1"),
+                        fidelity=sg_state.get("fidelity", 0.5)
+                    )
+
+                    if isinstance(result, str):
+                        # Ошибка
+                        await update.message.reply_text(f"❌ {result}")
+                    else:
+                        # Успех - отправляем изображение с watermark
+                        watermarked_image = add_watermark(result)
+                        await context.bot.send_photo(uid, watermarked_image)
+                        await context.bot.send_message(uid, "✅ Style Guide генерация завершена!")
+
+                    # Очищаем состояние
+                    user_state[uid]["style_guide"] = {"active": False}
+                    return
+                else:
+                    await update.message.reply_text("❌ Значение должно быть от 0.1 до 1.0")
+                    return
+            except:
+                await update.message.reply_text("❌ Введите число от 0.1 до 1.0")
+                return
+
+    # Проверяем, активен ли процесс Sketch
+    if user_state[uid].get("sketch", {}).get("active"):
+        sk_state = user_state[uid]["sketch"]
+
+        # Обработка загрузки sketch_image
+        if sk_state["step"] == "sketch_image" and update.message.photo:
+            file = await update.message.photo[-1].get_file()
+            downloaded_file = await file.download_to_drive()
+            sk_state["sketch_image"] = downloaded_file
+            sk_state["step"] = "prompt"
+            await update.message.reply_text(
+                "✅ Набросок получен!\n\n"
+                "Теперь введите <b>Prompt</b> (описание того, что должно быть на изображении):",
+                parse_mode="HTML"
+            )
+            return
+
+        # Обработка текстовых параметров
+        if sk_state["step"] == "prompt":
+            text = update.message.text.strip()
+            if not text or text == "-":
+                await update.message.reply_text("❌ Prompt обязателен для Sketch!")
+                return
+            sk_state["prompt"] = text
+            sk_state["step"] = "negative_prompt"
+            await update.message.reply_text(
+                "<b>Negative Prompt</b> (что исключить, можно оставить пустым):\n"
+                "Отправьте текст или '-' для пропуска.",
+                parse_mode="HTML"
+            )
+            return
+
+        if sk_state["step"] == "negative_prompt":
+            text = update.message.text.strip()
+            sk_state["negative_prompt"] = "" if text == "-" else text
+            sk_state["step"] = "control_strength"
+            await update.message.reply_text(
+                "<b>Control Strength</b> (сила следования наброску, 0.1-1.0):\n"
+                "Пример: 0.5",
+                parse_mode="HTML"
+            )
+            return
+
+        if sk_state["step"] == "control_strength":
+            try:
+                value = float(update.message.text.strip())
+                if 0.1 <= value <= 1.0:
+                    sk_state["control_strength"] = value
+
+                    # Все параметры собраны, запускаем генерацию
+                    await update.message.reply_text("⏳ Генерация изображения из наброска...")
+
+                    result = generate_from_sketch(
+                        image_path=sk_state["sketch_image"],
+                        prompt=sk_state["prompt"],
+                        negative_prompt=sk_state.get("negative_prompt", ""),
+                        control_strength=sk_state.get("control_strength", 0.5)
+                    )
+
+                    if isinstance(result, str):
+                        # Ошибка
+                        await update.message.reply_text(f"❌ {result}")
+                    else:
+                        # Успех - отправляем изображение с watermark
+                        watermarked_image = add_watermark(result)
+                        await context.bot.send_photo(uid, watermarked_image)
+                        await context.bot.send_message(uid, "✅ Генерация из наброска завершена!")
+
+                    # Очищаем состояние
+                    user_state[uid]["sketch"] = {"active": False}
+                    return
+                else:
+                    await update.message.reply_text("❌ Значение должно быть от 0.1 до 1.0")
+                    return
+            except:
+                await update.message.reply_text("❌ Введите число от 0.1 до 1.0")
+                return
+
+    # Обработка загрузки маски для inpainting
+    if update.message.photo and user_state[uid].get("waiting_for_inpaint_mask"):
+        # Получаем файл маски
+        file = await update.message.photo[-1].get_file()
+        mask_bytes = await file.download_as_bytearray()
+        mask_io = BytesIO(mask_bytes)
+
+        # Сохраняем маску
+        user_state[uid]["inpaint_mask"] = mask_io
+        user_state[uid]["waiting_for_inpaint_mask"] = False
+        user_state[uid]["waiting_for_inpaint_prompt"] = True
+
+        await update.message.reply_text(
+            "✅ <b>Маска получена!</b>\n\n"
+            "📝 Теперь отправьте текстовое описание того, что должно быть на месте белых областей маски.\n\n"
+            "Пример: <code>красивый цветок</code> или <code>синее небо с облаками</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Обработка промпта для inpainting
+    if update.message.text and user_state[uid].get("waiting_for_inpaint_prompt"):
+        inpaint_prompt = update.message.text.strip()
+        user_state[uid]["waiting_for_inpaint_prompt"] = False
+
+        st = user_state[uid]
+
+        if not st.get("last_image") or not st.get("inpaint_mask"):
+            await update.message.reply_text("❌ Ошибка: нет изображения или маски")
+            return
+
+        await update.message.reply_text("⏳ <b>Inpainting...</b>\n\n🎨 Обрабатываем изображение...", parse_mode="HTML")
+
+        # Выполняем inpainting
+        result = inpaint_image(st["last_image"], st["inpaint_mask"], prompt=inpaint_prompt)
+
+        if isinstance(result, str):
+            # Ошибка
+            await update.message.reply_text(result)
+        else:
+            # Успех
+            watermarked = add_watermark(result)
+            await context.bot.send_photo(uid, watermarked)
+            await update.message.reply_text(
+                f"✅ <b>Inpainting завершен!</b>\n\n"
+                f"🎨 Промпт: <code>{inpaint_prompt}</code>",
+                parse_mode="HTML",
+                reply_markup=actions_kb()
+            )
+
+            # Сохраняем результат для дальнейших операций
+            user_state[uid]["last_image"] = result
+
+        # Очищаем маску
+        user_state[uid]["inpaint_mask"] = None
+        return
+
+    # Обычная обработка для генерации изображений
+    if update.message.photo:
+        file = await update.message.photo[-1].get_file()
+        user_state[uid]["images"].append(file.file_path)
+        await update.message.reply_text("Фото добавлено! Теперь пришли текст.")
+        return
+
+    text = update.message.text.strip()
+
+    # Проверяем, находится ли пользователь в режиме refinement
+    if user_state[uid].get("in_refinement_mode"):
+        # Проверяем лимит генераций
+        can_gen, remaining_check = can_generate(uid)
+        if not can_gen:
+            await update.message.reply_text(
+                "❌ Вы исчерпали лимит бесплатных генераций (10 шт).\n"
+                "Свяжитесь с поддержкой для продления."
+            )
+            return
+
+        st = user_state[uid]
+
+        # Обновляем оригинальный промпт на русском
+        user_state[uid]["prompt"] = text
+        user_state[uid]["in_refinement_mode"] = False
+
+        if not st.get("saved_params"):
+            await update.message.reply_text("❌ Нет сохраненных параметров. Используйте /new для создания нового изображения.")
+            return
+
+        await update.message.reply_text("⏳ Обработка промпта с помощью ChatGPT...")
+
+        # Переводим новый промпт и генерируем
+        final_english_prompt = build_final_prompt(text, st["saved_params"])
+
+        await update.message.reply_text("⏳ Генерация изображения...")
+        images = st["images"]
+        output = generate_dream(final_english_prompt, images, format_ratio=st["saved_params"]["format"], model=st["saved_params"]["model"], style=st["saved_params"].get("style"), negative_prompt=st.get("negative_prompt", ""))
+
+        last_generated = None
+        for item in output:
+            try:
+                # Добавляем watermark
+                watermarked_image = add_watermark(item)
+                await context.bot.send_photo(uid, watermarked_image)
+                last_generated = item  # Сохраняем оригинал для AI функций
+            except:
+                await context.bot.send_message(uid, item)
+
+        # Используем одну генерацию
+        remaining = use_generation(uid)
+
+        # Сохраняем в библиотеку
+        add_to_history(
+            user_id=uid,
+            prompt=text,
+            english_prompt=final_english_prompt,
+            params=st["saved_params"],
+            negative_prompt=st.get("negative_prompt", "")
+        )
+
+        # Сохраняем новый промпт, последнее изображение и снова включаем режим refinement
+        user_state[uid]["last_english_prompt"] = final_english_prompt
+        user_state[uid]["last_image"] = last_generated  # Для Upscale, Variations, Remove BG
+        user_state[uid]["in_refinement_mode"] = True
+
+        await context.bot.send_message(
+            uid,
+            f"✅ Изображение готово\n\n<code>{final_english_prompt}</code>\n\n💎 Осталось генераций: {remaining}",
+            parse_mode="HTML",
+            reply_markup=actions_kb()
+        )
+        return
+
+    # Проверяем, редактирует ли пользователь промпт после выбора параметров
+    if user_state[uid].get("awaiting_edit"):
+        user_state[uid]["prompt"] = text
+        user_state[uid]["awaiting_edit"] = False
+
+        # Показываем обновленный промпт с кнопками подтверждения
+        st = user_state[uid]
+        final_prompt = f"""{st['prompt']}
+
+Format: {st['format']}
+Shot: {st['shot']}
+Camera angle: {st['angle']}
+Style: {st['style']}
+Lighting: {st['lighting']}
+Quality: {st['quality']}"""
+
+        await update.message.reply_text(
+            f"📝 Обновленный промпт:\n\n{final_prompt}",
+            reply_markup=confirm_kb()
+        )
+        return
+
+    # Проверяем, редактирует ли пользователь саммари URL
+    if user_state[uid].get("awaiting_summary_edit"):
+        user_state[uid]["prompt"] = text
+        user_state[uid]["awaiting_summary_edit"] = False
+
+        # Показываем обновленное саммари с кнопками
+        await update.message.reply_text(
+            f"📝 Обновленное описание:\n\n{text}",
+            reply_markup=summary_kb()
+        )
+        return
+
+    # Проверяем, вводит ли пользователь negative prompt
+    if user_state[uid].get("awaiting_negative_prompt"):
+        user_state[uid]["awaiting_negative_prompt"] = False
+        user_state[uid]["negative_prompt"] = text
+
+        # Показываем финальный промпт (через небольшой хак для имитации query)
+        from telegram import Update
+
+        # Создаем текстовое сообщение вместо callback query
+        await update.message.reply_text("✅ Negative prompt добавлен!")
+
+        st = user_state[uid]
+        format_ru = {
+            "1:1": "1:1 (квадрат)",
+            "21:9": "21:9 (ультра-широкий)",
+            "16:9": "16:9 (горизонтально)",
+            "3:2": "3:2",
+            "5:4": "5:4",
+            "4:5": "4:5",
+            "2:3": "2:3",
+            "9:16": "9:16 (вертикально)",
+            "9:21": "9:21 (ультра-вертикально)"
+        }
+
+        model_ru = {
+            "sd3.5-large": "SD 3.5 Large",
+            "sd3.5-large-turbo": "SD 3.5 Large Turbo",
+            "sd3.5-medium": "SD 3.5 Medium",
+            "sd3.5-flash": "SD 3.5 Flash"
+        }
+
+        final_prompt_ru = f"""{st['prompt']}
+
+Модель: {model_ru.get(st['model'], st['model'])}
+Формат: {format_ru.get(st['format'], st['format'])}
+🚫 Negative: {st['negative_prompt']}"""
+
+        await update.message.reply_text(
+            f"📝 Финальный промпт:\n\n{final_prompt_ru}",
+            reply_markup=confirm_kb()
+        )
+        return
+
+    # Проверяем, сохраняет ли пользователь пресет
+    if user_state[uid].get("awaiting_preset_name"):
+        user_state[uid]["awaiting_preset_name"] = False
+        preset_name = text.strip()
+
+        if not preset_name:
+            await update.message.reply_text("❌ Название не может быть пустым")
+            return
+
+        # Получаем saved_params из state
+        params = user_state[uid].get("saved_params", {})
+
+        success, message = create_preset(
+            user_id=uid,
+            preset_name=preset_name,
+            model=params.get("model", "sd3.5-large"),
+            format_ratio=params.get("format", "1:1"),
+            style=params.get("style", "none"),
+            negative_prompt=user_state[uid].get("negative_prompt", "")
+        )
+
+        if success:
+            await update.message.reply_text(
+                f"✅ <b>Пресет '{preset_name}' сохранен!</b>\n\n"
+                f"Используйте /presets для управления пресетами.",
+                parse_mode="HTML"
+            )
+        else:
+            await update.message.reply_text(f"❌ {message}")
+
+        return
+
+    # Проверяем, ищет ли пользователь в библиотеке
+    if user_state[uid].get("awaiting_library_search"):
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        user_state[uid]["awaiting_library_search"] = False
+
+        results = search_history(uid, text)
+
+        if not results:
+            await update.message.reply_text(
+                f"🔍 По запросу '<b>{text}</b>' ничего не найдено",
+                parse_mode="HTML"
+            )
+            return
+
+        msg = f"🔍 <b>Результаты поиска: '{text}'</b>\n\n"
+        for i, gen in enumerate(results[:10], 1):
+            date = gen['date'][:16].replace('T', ' ')
+            prompt_preview = gen['prompt'][:50] + "..." if len(gen['prompt']) > 50 else gen['prompt']
+            fav_mark = "⭐ " if gen.get('is_favorite', False) else ""
+            msg += f"{i}. {fav_mark}<b>{prompt_preview}</b>\n"
+            msg += f"   📅 {date} | {gen['model']}\n\n"
+
+        keyboard = [[InlineKeyboardButton("🔙 К библиотеке", callback_data="lib_main")]]
+
+        await update.message.reply_text(
+            msg,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        return
+
+    # Обычный новый запрос
+    if text.startswith("http"):
+        await update.message.reply_text("🔍 Анализирую страницу с помощью ChatGPT...")
+        summary = extract_text_from_url(text)
+
+        # Сохраняем саммари и показываем с кнопками
+        user_state[uid]["prompt"] = summary
+        await update.message.reply_text(
+            f"📄 Summary страницы:\n\n{summary}",
+            reply_markup=summary_kb()
+        )
+        return
+
+    # Обычный текстовый запрос - сразу к выбору модели
+    user_state[uid]["prompt"] = text
+    await update.message.reply_text("Выбери модель:", reply_markup=model_kb())
+
+async def callbacks(update, context):
+    query = update.callback_query
+    uid = query.from_user.id
+    data = query.data
+
+    # Обработка кнопки "Редактировать" для саммари URL
+    if data == "edit_summary":
+        user_state[uid]["awaiting_summary_edit"] = True
+        await query.edit_message_text(
+            "✏️ Отправьте новое описание для изображения.\n\n"
+            "Текущее описание будет заменено."
+        )
+        return
+
+    # Обработка кнопки "Продолжить" для саммари URL
+    if data == "continue_summary":
+        await query.edit_message_text("Выбери модель:", reply_markup=model_kb())
+        return
+
+    # Обработка выбора модели
+    if data.startswith("model_"):
+        user_state[uid]["model"] = data[6:]  # Убираем "model_"
+        await query.edit_message_text("Выбери формат:", reply_markup=format_kb())
+        return
+
+    # Вспомогательная функция для показа финального промпта
+    async def show_final_prompt(query, uid):
+        st = user_state[uid]
+
+        # Переводим параметры на русский для отображения
+        format_ru = {
+            "1:1": "1:1 (квадрат)",
+            "21:9": "21:9 (ультра-широкий)",
+            "16:9": "16:9 (горизонтально)",
+            "3:2": "3:2",
+            "5:4": "5:4",
+            "4:5": "4:5",
+            "2:3": "2:3",
+            "9:16": "9:16 (вертикально)",
+            "9:21": "9:21 (ультра-вертикально)"
+        }
+
+        model_ru = {
+            "sd3.5-large": "SD 3.5 Large (лучшее качество)",
+            "sd3.5-large-turbo": "SD 3.5 Large Turbo (быстро + качество)",
+            "sd3.5-medium": "SD 3.5 Medium (баланс)",
+            "sd3.5-flash": "SD 3.5 Flash (макс. скорость)"
+        }
+
+        style_ru = {
+            "none": "Без стиля",
+            "3d-model": "3D Model",
+            "analog-film": "Analog Film",
+            "anime": "Anime",
+            "cinematic": "Cinematic",
+            "comic-book": "Comic Book",
+            "digital-art": "Digital Art",
+            "enhance": "Enhance",
+            "fantasy-art": "Fantasy Art",
+            "isometric": "Isometric",
+            "line-art": "Line Art",
+            "low-poly": "Low Poly",
+            "modeling-compound": "Modeling Compound",
+            "neon-punk": "Neon Punk",
+            "origami": "Origami",
+            "photographic": "Photographic",
+            "pixel-art": "Pixel Art",
+            "tile-texture": "Tile Texture"
+        }
+
+        # Формируем красивый предпросмотр с эмодзи
+        final_prompt_ru = f"""📝 <b>Предпросмотр генерации</b>
+
+💬 <b>Промпт:</b>
+<i>{st['prompt']}</i>
+
+━━━━━━━━━━━━━━━
+⚙️ <b>Параметры:</b>
+
+🎨 <b>Модель:</b> {model_ru.get(st['model'], st['model'])}
+📐 <b>Формат:</b> {format_ru.get(st['format'], st['format'])}"""
+
+        # Показываем стиль только если он не "none"
+        if st.get("style", "none") != "none":
+            final_prompt_ru += f"\n🖌 <b>Стиль:</b> {style_ru.get(st.get('style', 'none'), st.get('style', 'none'))}"
+
+        if st.get("negative_prompt"):
+            final_prompt_ru += f"\n🚫 <b>Negative Prompt:</b> <code>{st['negative_prompt']}</code>"
+
+        final_prompt_ru += "\n━━━━━━━━━━━━━━━"
+
+        # Показываем финальный промпт на русском с кнопками подтверждения
+        await query.edit_message_text(
+            final_prompt_ru,
+            reply_markup=confirm_kb(),
+            parse_mode="HTML"
+        )
+
+    if data.startswith("fmt_"):
+        user_state[uid]["format"] = data[4:]
+        user_state[uid]["style"] = "none"  # По умолчанию без стиля
+
+        # Предлагаем добавить negative prompt
+        await query.edit_message_text(
+            "🚫 <b>Negative Prompt</b>\n\n"
+            "Хотите указать, что НЕ должно быть на изображении?\n\n"
+            "<i>Например: blurry, low quality, distorted, ugly</i>",
+            reply_markup=negative_prompt_kb(),
+            parse_mode="HTML"
+        )
+        return
+
+    if data.startswith("style_"):
+        user_state[uid]["style"] = data[6:]
+
+        st = user_state[uid]
+
+        # Переводим параметры на русский для отображения
+        format_ru = {
+            "1:1": "1:1 (квадрат)",
+            "21:9": "21:9 (ультра-широкий)",
+            "16:9": "16:9 (горизонтально)",
+            "3:2": "3:2",
+            "5:4": "5:4",
+            "4:5": "4:5",
+            "2:3": "2:3",
+            "9:16": "9:16 (вертикально)",
+            "9:21": "9:21 (ультра-вертикально)"
+        }
+
+        model_ru = {
+            "sd3.5-large": "SD 3.5 Large",
+            "sd3.5-large-turbo": "SD 3.5 Large Turbo",
+            "sd3.5-medium": "SD 3.5 Medium",
+            "sd3.5-flash": "SD 3.5 Flash"
+        }
+
+        style_ru = {
+            "none": "None",
+            "3d-model": "3D Model",
+            "analog-film": "Analog Film",
+            "anime": "Anime",
+            "cinematic": "Cinematic",
+            "comic-book": "Comic Book",
+            "digital-art": "Digital Art",
+            "enhance": "Enhance",
+            "fantasy-art": "Fantasy Art",
+            "isometric": "Isometric",
+            "line-art": "Line Art",
+            "low-poly": "Low Poly",
+            "modeling-compound": "Modeling Compound",
+            "neon-punk": "Neon Punk",
+            "origami": "Origami",
+            "photographic": "Photographic",
+            "pixel-art": "Pixel Art",
+            "tile-texture": "Tile Texture"
+        }
+
+        final_prompt_ru = f"""{st['prompt']}
+
+Модель: {model_ru.get(st['model'], st['model'])}
+Формат: {format_ru.get(st['format'], st['format'])}
+Стиль: {style_ru.get(st['style'], st['style'])}"""
+
+        # Показываем финальный промпт на русском с кнопками подтверждения
+        await query.edit_message_text(
+            f"📝 Финальный промпт:\n\n{final_prompt_ru}",
+            reply_markup=confirm_kb()
+        )
+        return
+
+    # Обработка кнопки "Редактировать"
+    if data == "edit_prompt":
+        user_state[uid]["awaiting_edit"] = True
+        await query.edit_message_text(
+            "✏️ Отправьте новый текст промпта.\n\n"
+            "Текущий промпт будет заменен, но все выбранные параметры сохранятся."
+        )
+        return
+
+    # Обработка кнопки "Создать"
+    if data == "generate":
+        # Проверяем лимит генераций
+        can_gen, remaining = can_generate(uid)
+        if not can_gen:
+            await query.answer(
+                "❌ Вы исчерпали лимит бесплатных генераций (10 шт). "
+                "Свяжитесь с поддержкой для продления.",
+                show_alert=True
+            )
+            return
+
+        st = user_state[uid]
+
+        await query.edit_message_text("⏳ <b>Шаг 1/3:</b> Обработка промпта с помощью ChatGPT-4o...", parse_mode="HTML")
+
+        # Формируем финальный промпт на английском с учетом всех параметров
+        params = {
+            'model': st['model'],
+            'format': st['format'],
+            'style': st['style']
+        }
+
+        # Сохраняем параметры для кнопок More/Reload
+        user_state[uid]["saved_params"] = params.copy()
+
+        # Переводим и формируем промпт для генерации
+        final_english_prompt = build_final_prompt(st['prompt'], params)
+
+        # Определяем примерное время в зависимости от модели
+        time_estimates = {
+            "sd3.5-large": "~45 сек",
+            "sd3.5-large-turbo": "~30 сек",
+            "sd3.5-medium": "~25 сек",
+            "sd3.5-flash": "~15 сек"
+        }
+
+        estimate = time_estimates.get(st['model'], "~30 сек")
+
+        await query.edit_message_text(
+            f"⏳ <b>Шаг 2/3:</b> Генерация изображения...\n\n"
+            f"🎨 Модель: {st['model']}\n"
+            f"⏱ Примерное время: {estimate}",
+            parse_mode="HTML"
+        )
+
+        images = st["images"]
+
+        # Передаем формат, модель, стиль и negative prompt для генерации
+        output = generate_dream(final_english_prompt, images, format_ratio=st['format'], model=st['model'], style=st.get('style'), negative_prompt=st.get('negative_prompt', ''))
+
+        await query.edit_message_text("⏳ <b>Шаг 3/3:</b> Отправка результата...", parse_mode="HTML")
+
+        last_generated = None
+        for item in output:
+            try:
+                # Добавляем watermark
+                watermarked_image = add_watermark(item)
+                await context.bot.send_photo(uid, watermarked_image)
+                last_generated = item  # Сохраняем оригинал для AI функций
+            except:
+                await context.bot.send_message(uid, item)
+
+        # Используем одну генерацию
+        remaining = use_generation(uid)
+
+        # Сохраняем в библиотеку
+        add_to_history(
+            user_id=uid,
+            prompt=st['prompt'],
+            english_prompt=final_english_prompt,
+            params=params,
+            negative_prompt=st.get('negative_prompt', '')
+        )
+
+        # Сохраняем промпт и изображение для возможности refinement и AI функций
+        user_state[uid]["last_english_prompt"] = final_english_prompt
+        user_state[uid]["last_image"] = last_generated
+        user_state[uid]["in_refinement_mode"] = True
+
+        # Отправляем сообщение с промптом и кнопками действий
+        await context.bot.send_message(
+            uid,
+            f"✅ Изображение готово\n\n<code>{final_english_prompt}</code>\n\n💎 Осталось генераций: {remaining}",
+            parse_mode="HTML",
+            reply_markup=actions_kb()
+        )
+        return
+
+    # Обработка кнопки "Modify" - вернуться к редактированию параметров
+    if data == "action_modify":
+        user_state[uid]["in_refinement_mode"] = False
+        await query.edit_message_text("Выбери модель:", reply_markup=model_kb())
+        return
+
+    # Обработка кнопки "Reference this" - сохранить как референс
+    if data == "action_reference":
+        await query.answer("🖼️ Функция в разработке. Скоро можно будет использовать как референс!")
+        return
+
+    # Обработка кнопки "More like this" - генерация похожего
+    if data == "action_more":
+        # Проверяем лимит генераций
+        can_gen, remaining_check = can_generate(uid)
+        if not can_gen:
+            await query.answer(
+                "❌ Вы исчерпали лимит бесплатных генераций (10 шт). "
+                "Свяжитесь с поддержкой для продления.",
+                show_alert=True
+            )
+            return
+
+        st = user_state[uid]
+        if not st.get("saved_params"):
+            await query.answer("❌ Нет сохраненных параметров")
+            return
+
+        await query.edit_message_text("⏳ <b>Шаг 1/3:</b> Обработка промпта с помощью ChatGPT-4o...", parse_mode="HTML")
+
+        # Добавляем вариативность к промпту
+        varied_prompt = st["prompt"] + ", вариация, другая композиция"
+
+        # Используем сохраненные параметры
+        final_english_prompt = build_final_prompt(varied_prompt, st["saved_params"])
+
+        # Определяем примерное время
+        time_estimates = {
+            "sd3.5-large": "~45 сек",
+            "sd3.5-large-turbo": "~30 сек",
+            "sd3.5-medium": "~25 сек",
+            "sd3.5-flash": "~15 сек"
+        }
+        estimate = time_estimates.get(st["saved_params"]["model"], "~30 сек")
+
+        await query.edit_message_text(
+            f"⏳ <b>Шаг 2/3:</b> Генерация похожего изображения...\n\n"
+            f"🎨 Модель: {st['saved_params']['model']}\n"
+            f"⏱ Примерное время: {estimate}",
+            parse_mode="HTML"
+        )
+
+        images = st["images"]
+        output = generate_dream(final_english_prompt, images, format_ratio=st["saved_params"]["format"], model=st["saved_params"]["model"], style=st["saved_params"].get("style"), negative_prompt=st.get("negative_prompt", ""))
+
+        await query.edit_message_text("⏳ <b>Шаг 3/3:</b> Отправка результата...", parse_mode="HTML")
+
+        last_generated = None
+        for item in output:
+            try:
+                # Добавляем watermark
+                watermarked_image = add_watermark(item)
+                await context.bot.send_photo(uid, watermarked_image)
+                last_generated = item  # Сохраняем оригинал для AI функций
+            except:
+                await context.bot.send_message(uid, item)
+
+        # Используем одну генерацию
+        remaining = use_generation(uid)
+
+        # Сохраняем в библиотеку
+        add_to_history(
+            user_id=uid,
+            prompt=varied_prompt,
+            english_prompt=final_english_prompt,
+            params=st["saved_params"],
+            negative_prompt=st.get("negative_prompt", "")
+        )
+
+        # Сохраняем промпт и изображение для возможности refinement и AI функций
+        user_state[uid]["last_english_prompt"] = final_english_prompt
+        user_state[uid]["last_image"] = last_generated
+        user_state[uid]["in_refinement_mode"] = True
+
+        await context.bot.send_message(
+            uid,
+            f"✅ Изображение готово\n\n<code>{final_english_prompt}</code>\n\n💎 Осталось генераций: {remaining}",
+            parse_mode="HTML",
+            reply_markup=actions_kb()
+        )
+        return
+
+    # Обработка кнопки "Reload" - повторная генерация с теми же параметрами
+    if data == "action_reload":
+        # Проверяем лимит генераций
+        can_gen, remaining_check = can_generate(uid)
+        if not can_gen:
+            await query.answer(
+                "❌ Вы исчерпали лимит бесплатных генераций (10 шт). "
+                "Свяжитесь с поддержкой для продления.",
+                show_alert=True
+            )
+            return
+
+        st = user_state[uid]
+        if not st.get("saved_params"):
+            await query.answer("❌ Нет сохраненных параметров")
+            return
+
+        await query.edit_message_text("⏳ <b>Шаг 1/3:</b> Обработка промпта с помощью ChatGPT-4o...", parse_mode="HTML")
+
+        # Используем те же параметры
+        final_english_prompt = build_final_prompt(st["prompt"], st["saved_params"])
+
+        # Определяем примерное время
+        time_estimates = {
+            "sd3.5-large": "~45 сек",
+            "sd3.5-large-turbo": "~30 сек",
+            "sd3.5-medium": "~25 сек",
+            "sd3.5-flash": "~15 сек"
+        }
+        estimate = time_estimates.get(st["saved_params"]["model"], "~30 сек")
+
+        await query.edit_message_text(
+            f"⏳ <b>Шаг 2/3:</b> Повторная генерация...\n\n"
+            f"🎨 Модель: {st['saved_params']['model']}\n"
+            f"⏱ Примерное время: {estimate}",
+            parse_mode="HTML"
+        )
+
+        images = st["images"]
+        output = generate_dream(final_english_prompt, images, format_ratio=st["saved_params"]["format"], model=st["saved_params"]["model"], style=st["saved_params"].get("style"), negative_prompt=st.get("negative_prompt", ""))
+
+        await query.edit_message_text("⏳ <b>Шаг 3/3:</b> Отправка результата...", parse_mode="HTML")
+
+        last_generated = None
+        for item in output:
+            try:
+                # Добавляем watermark
+                watermarked_image = add_watermark(item)
+                await context.bot.send_photo(uid, watermarked_image)
+                last_generated = item  # Сохраняем оригинал для AI функций
+            except:
+                await context.bot.send_message(uid, item)
+
+        # Используем одну генерацию
+        remaining = use_generation(uid)
+
+        # Сохраняем в библиотеку
+        add_to_history(
+            user_id=uid,
+            prompt=st["prompt"],
+            english_prompt=final_english_prompt,
+            params=st["saved_params"],
+            negative_prompt=st.get("negative_prompt", "")
+        )
+
+        # Сохраняем промпт и изображение для возможности refinement и AI функций
+        user_state[uid]["last_english_prompt"] = final_english_prompt
+        user_state[uid]["last_image"] = last_generated
+        user_state[uid]["in_refinement_mode"] = True
+
+        await context.bot.send_message(
+            uid,
+            f"✅ Изображение готово\n\n<code>{final_english_prompt}</code>\n\n💎 Осталось генераций: {remaining}",
+            parse_mode="HTML",
+            reply_markup=actions_kb()
+        )
+        return
+
+    # Обработка кнопки "Upscale"
+    if data == "action_upscale":
+        st = user_state[uid]
+        if not st.get("last_image"):
+            await query.answer("❌ Нет изображения для upscale")
+            return
+
+        await query.edit_message_text("⏳ <b>Upscaling изображения...</b>\n\n🔍 Увеличиваем разрешение...", parse_mode="HTML")
+
+        # Upscale последнего изображения
+        result = upscale_image(st["last_image"])
+
+        if isinstance(result, str):
+            # Ошибка
+            await query.edit_message_text(result)
+        else:
+            # Успех - отправляем upscaled изображение
+            watermarked = add_watermark(result)
+            await context.bot.send_photo(uid, watermarked)
+            await context.bot.send_message(
+                uid,
+                "✅ <b>Upscale завершен!</b>\n\n🔍 Разрешение увеличено",
+                parse_mode="HTML",
+                reply_markup=actions_kb()
+            )
+        return
+
+    # Обработка кнопки "Variations"
+    if data == "action_variations":
+        st = user_state[uid]
+        if not st.get("last_image"):
+            await query.answer("❌ Нет изображения для создания вариаций")
+            return
+
+        # Проверяем лимит
+        can_gen, remaining_check = can_generate(uid)
+        if not can_gen:
+            await query.answer(
+                "❌ Вы исчерпали лимит бесплатных генераций (10 шт). "
+                "Свяжитесь с поддержкой для продления.",
+                show_alert=True
+            )
+            return
+
+        await query.edit_message_text("⏳ <b>Создание вариации...</b>\n\n🎭 Генерируем похожее изображение...", parse_mode="HTML")
+
+        # Создаем вариацию
+        result = create_variations(st["last_image"], prompt=st.get("prompt", ""))
+
+        if isinstance(result, str):
+            # Ошибка
+            await query.edit_message_text(result)
+        else:
+            # Успех
+            for item in result:
+                watermarked = add_watermark(item)
+                await context.bot.send_photo(uid, watermarked)
+
+            # Используем одну генерацию
+            remaining = use_generation(uid)
+
+            await context.bot.send_message(
+                uid,
+                f"✅ <b>Вариация создана!</b>\n\n💎 Осталось генераций: {remaining}",
+                parse_mode="HTML",
+                reply_markup=actions_kb()
+            )
+        return
+
+    # Обработка кнопки "Remove Background"
+    if data == "action_remove_bg":
+        st = user_state[uid]
+        if not st.get("last_image"):
+            await query.answer("❌ Нет изображения для удаления фона")
+            return
+
+        await query.edit_message_text("⏳ <b>Удаление фона...</b>\n\n🖌️ Обрабатываем изображение...", parse_mode="HTML")
+
+        # Удаляем фон
+        result = remove_background(st["last_image"])
+
+        if isinstance(result, str):
+            # Ошибка
+            await query.edit_message_text(result)
+        else:
+            # Успех - отправляем изображение без фона
+            # Для PNG с прозрачностью не добавляем watermark, чтобы не портить прозрачность
+            await context.bot.send_document(uid, result, filename="no_bg.png")
+            await context.bot.send_message(
+                uid,
+                "✅ <b>Фон удален!</b>\n\n🖌️ Изображение с прозрачным фоном готово",
+                parse_mode="HTML",
+                reply_markup=actions_kb()
+            )
+        return
+
+    # Обработка кнопки "Face Restore"
+    if data == "action_face_restore":
+        st = user_state[uid]
+        if not st.get("last_image"):
+            await query.answer("❌ Нет изображения для восстановления лица")
+            return
+
+        await query.edit_message_text("⏳ <b>Восстановление лица...</b>\n\n👤 Улучшаем детали лица...", parse_mode="HTML")
+
+        # Восстанавливаем лицо
+        result = restore_face(st["last_image"])
+
+        if isinstance(result, str):
+            # Ошибка
+            await query.edit_message_text(result)
+        else:
+            # Успех - отправляем улучшенное изображение
+            watermarked = add_watermark(result)
+            await context.bot.send_photo(uid, watermarked)
+            await context.bot.send_message(
+                uid,
+                "✅ <b>Лицо восстановлено!</b>\n\n👤 Детали лица улучшены",
+                parse_mode="HTML",
+                reply_markup=actions_kb()
+            )
+        return
+
+    # Обработка кнопки "Inpaint"
+    if data == "action_inpaint":
+        st = user_state[uid]
+        if not st.get("last_image"):
+            await query.answer("❌ Нет изображения для inpainting")
+            return
+
+        # Устанавливаем режим ожидания маски
+        st["waiting_for_inpaint_mask"] = True
+
+        await query.edit_message_text(
+            "🎨 <b>Inpainting - редактирование части изображения</b>\n\n"
+            "📤 Отправьте изображение-маску, где:\n"
+            "• <b>Белые области</b> - части изображения, которые нужно изменить\n"
+            "• <b>Черные области</b> - части, которые останутся без изменений\n\n"
+            "Вы можете нарисовать маску в любом графическом редакторе.",
+            parse_mode="HTML"
+        )
+        return
+
+    # Обработка кнопки "Сохранить как пресет"
+    if data == "action_save_preset":
+        st = user_state[uid]
+        if not st.get("saved_params"):
+            await query.answer("❌ Нет сохраненных параметров")
+            return
+
+        user_state[uid]["awaiting_preset_name"] = True
+        await query.edit_message_text(
+            "💾 <b>Сохранить пресет</b>\n\n"
+            "Введите название для пресета (например: 'Портрет 4K', 'Пейзаж cinematic'):",
+            parse_mode="HTML"
+        )
+        return
+
+    # Обработка кнопки "New image" - начать сначала
+    if data == "action_new":
+        user_state.pop(uid, None)  # Это автоматически очищает in_refinement_mode
+        await query.edit_message_text("🆕 Готов к новому изображению!\n\nПришли текст, ссылку или фото с описанием.")
+        return
+
+    # Обработка кнопок negative prompt
+    if data == "add_negative":
+        user_state[uid]["awaiting_negative_prompt"] = True
+        await query.edit_message_text(
+            "🚫 <b>Введите Negative Prompt</b>\n\n"
+            "Напишите, что НЕ должно быть на изображении.\n\n"
+            "<i>Примеры: blurry, low quality, distorted, ugly, bad anatomy</i>",
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "skip_negative":
+        user_state[uid]["negative_prompt"] = ""
+        await show_final_prompt(query, uid)
+        return
+
+    # Обработка кнопок пресетов
+    if data == "presets_list":
+        user_presets = get_user_presets(uid)
+
+        msg = "💾 <b>Мои пресеты</b>\n\n"
+        if user_presets:
+            msg += "Выберите пресет для просмотра:\n\n"
+        else:
+            msg += "У вас пока нет сохраненных пресетов.\n\nСоздайте пресет, сохранив текущие настройки генерации!"
+
+        await query.edit_message_text(
+            msg,
+            reply_markup=presets_list_kb(user_presets),
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "presets_save_current":
+        # Проверяем, есть ли сохраненные параметры в state
+        if "saved_params" in user_state[uid]:
+            user_state[uid]["awaiting_preset_name"] = True
+            await query.edit_message_text(
+                "💾 <b>Сохранить пресет</b>\n\n"
+                "Введите название для пресета (например: 'Портрет 4K', 'Пейзаж cinematic'):",
+                parse_mode="HTML"
+            )
+        else:
+            await query.answer(
+                "❌ Нет параметров для сохранения. Сначала создайте изображение!",
+                show_alert=True
+            )
+        return
+
+    if data == "presets_back":
+        await query.message.delete()
+        # Вызываем команду presets заново
+        await presets_command(update, context)
+        return
+
+    if data.startswith("preset_load_"):
+        preset_name = data[12:]  # Убираем "preset_load_"
+        preset_data = get_preset(uid, preset_name)
+
+        if not preset_data:
+            await query.answer("Пресет не найден", show_alert=True)
+            return
+
+        # Форматируем данные для отображения
+        model_ru = {
+            "sd3.5-large": "SD 3.5 Large",
+            "sd3.5-large-turbo": "SD 3.5 Large Turbo",
+            "sd3.5-medium": "SD 3.5 Medium",
+            "sd3.5-flash": "SD 3.5 Flash"
+        }
+
+        format_ru = {
+            "1:1": "1:1 (квадрат)",
+            "21:9": "21:9 (ультра-широкий)",
+            "16:9": "16:9 (горизонтально)",
+            "3:2": "3:2",
+            "5:4": "5:4",
+            "4:5": "4:5",
+            "2:3": "2:3",
+            "9:16": "9:16 (вертикально)",
+            "9:21": "9:21 (ультра-вертикально)"
+        }
+
+        msg = f"""📌 <b>Пресет: {preset_name}</b>
+
+🎨 Модель: {model_ru.get(preset_data['model'], preset_data['model'])}
+📐 Формат: {format_ru.get(preset_data['format'], preset_data['format'])}
+🖌 Стиль: {preset_data.get('style', 'none')}"""
+
+        if preset_data.get('negative_prompt'):
+            msg += f"\n🚫 Negative: {preset_data['negative_prompt']}"
+
+        await query.edit_message_text(
+            msg,
+            reply_markup=preset_actions_kb(preset_name),
+            parse_mode="HTML"
+        )
+        return
+
+    if data.startswith("preset_apply_"):
+        preset_name = data[13:]  # Убираем "preset_apply_"
+        preset_data = get_preset(uid, preset_name)
+
+        if not preset_data:
+            await query.answer("Пресет не найден", show_alert=True)
+            return
+
+        # Применяем пресет к текущему state
+        user_state[uid]["model"] = preset_data["model"]
+        user_state[uid]["format"] = preset_data["format"]
+        user_state[uid]["style"] = preset_data.get("style", "none")
+        user_state[uid]["negative_prompt"] = preset_data.get("negative_prompt", "")
+
+        await query.answer(f"✅ Пресет '{preset_name}' применен!", show_alert=True)
+        await query.edit_message_text(
+            f"✅ <b>Пресет применен!</b>\n\n"
+            f"Теперь используйте /new для создания изображения с этими параметрами.",
+            parse_mode="HTML"
+        )
+        return
+
+    if data.startswith("preset_delete_"):
+        preset_name = data[14:]  # Убираем "preset_delete_"
+
+        success = delete_preset(uid, preset_name)
+
+        if success:
+            await query.answer(f"✅ Пресет '{preset_name}' удален", show_alert=True)
+            # Возвращаемся к списку пресетов
+            user_presets = get_user_presets(uid)
+            msg = "💾 <b>Мои пресеты</b>\n\n"
+            if user_presets:
+                msg += "Выберите пресет для просмотра:\n\n"
+            else:
+                msg += "У вас больше нет сохраненных пресетов."
+
+            await query.edit_message_text(
+                msg,
+                reply_markup=presets_list_kb(user_presets),
+                parse_mode="HTML"
+            )
+        else:
+            await query.answer("❌ Ошибка при удалении пресета", show_alert=True)
+        return
+
+    if data == "preset_none":
+        # Заглушка для кнопки "Нет пресетов"
+        await query.answer("Создайте первый пресет!", show_alert=True)
+        return
+
+    # Обработка кнопок покупки генераций
+    if data.startswith("package_"):
+        package_id = data[8:]  # Убираем "package_"
+        package = get_package_info(package_id)
+
+        if not package:
+            await query.answer("❌ Пакет не найден", show_alert=True)
+            return
+
+        msg = f"""{format_package_message(package_id)}
+
+Выберите способ оплаты:"""
+
+        await query.edit_message_text(
+            msg,
+            reply_markup=payment_method_kb(package_id),
+            parse_mode="HTML"
+        )
+        return
+
+    if data.startswith("pay_stars_"):
+        package_id = data[10:]  # Убираем "pay_stars_"
+        package = get_package_info(package_id)
+
+        if not package:
+            await query.answer("❌ Пакет не найден", show_alert=True)
+            return
+
+        # Создаем invoice для Telegram Stars
+        from telegram import LabeledPrice
+
+        title = f"{package['name']} - {package['description']}"
+        description = f"Пакет {package['generations']} генераций"
+        payload = f"{uid}:{package_id}"
+        currency = "XTR"  # Telegram Stars
+        prices = [LabeledPrice("Генерации", package["stars"])]
+
+        await context.bot.send_invoice(
+            chat_id=uid,
+            title=title,
+            description=description,
+            payload=payload,
+            provider_token="",  # Пусто для Stars
+            currency=currency,
+            prices=prices
+        )
+
+        await query.answer("✅ Инвойс создан! Проверьте чат", show_alert=True)
+        return
+
+    if data.startswith("pay_crypto_"):
+        package_id = data[11:]  # Убираем "pay_crypto_"
+        package = get_package_info(package_id)
+
+        if not package:
+            await query.answer("❌ Пакет не найден", show_alert=True)
+            return
+
+        # Создаем invoice через CryptoBot
+        invoice = create_cryptobot_invoice(uid, package_id)
+
+        if not invoice:
+            await query.edit_message_text(
+                "❌ <b>Ошибка создания инвойса</b>\n\n"
+                "Попробуйте позже или выберите Telegram Stars.",
+                parse_mode="HTML"
+            )
+            return
+
+        # Получаем ссылку на оплату
+        pay_url = invoice.get("pay_url") or invoice.get("bot_invoice_url")
+
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💰 Оплатить", url=pay_url)],
+            [InlineKeyboardButton("◀️ Назад", callback_data="buy_packages")]
+        ])
+
+        msg = f"""💰 <b>Оплата через CryptoBot</b>
+
+📦 Пакет: {package['name']}
+💎 Генераций: {package['generations']}
+💵 Цена: ${package['usdt']} USDT
+
+Нажмите кнопку ниже для оплаты.
+После оплаты генерации будут добавлены автоматически."""
+
+        await query.edit_message_text(
+            msg,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "buy_packages":
+        # Возврат к списку пакетов
+        stats = get_user_stats(uid)
+        remaining = stats["remaining"]
+
+        msg = f"""💎 <b>Купить генерации</b>
+
+📊 <b>Ваш баланс:</b> {remaining} генераций
+
+{get_all_packages_message()}"""
+
+        await query.edit_message_text(
+            msg,
+            reply_markup=packages_kb(),
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "buy_back":
+        # Закрыть меню покупки
+        await query.message.delete()
+        return
+
+    # Обработка кнопок библиотеки
+    if data.startswith("lib_history_"):
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        offset = int(data.split("_")[-1])
+        history = get_user_history(uid, limit=5, offset=offset)
+
+        if not history:
+            await query.answer("История пуста")
+            return
+
+        msg = "📜 <b>История генераций:</b>\n\nНажмите на запись для деталей:"
+
+        # Кнопки для каждого элемента истории
+        keyboard = []
+        for i, gen in enumerate(history):
+            date = gen['date'][:10]  # Только дата
+            prompt_preview = gen['prompt'][:35] + "..." if len(gen['prompt']) > 35 else gen['prompt']
+            fav_mark = "⭐ " if gen.get('is_favorite', False) else ""
+            button_text = f"{fav_mark}{prompt_preview} ({date})"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"lib_view_{gen['id']}")])
+
+        # Кнопки навигации
+        nav_buttons = []
+        if offset > 0:
+            nav_buttons.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"lib_history_{offset-5}"))
+        if len(history) == 5:  # Возможно есть еще
+            nav_buttons.append(InlineKeyboardButton("Вперед ➡️", callback_data=f"lib_history_{offset+5}"))
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+
+        keyboard.append([InlineKeyboardButton("🔙 К библиотеке", callback_data="lib_main")])
+
+        await query.edit_message_text(
+            msg,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        return
+
+    # Просмотр деталей элемента истории
+    if data.startswith("lib_view_"):
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        gen_id = float(data[9:])  # ID генерации (timestamp)
+        history = get_user_history(uid, limit=100)  # Получаем всю историю
+
+        # Находим нужный элемент
+        gen = next((g for g in history if g['id'] == gen_id), None)
+
+        if not gen:
+            await query.answer("Запись не найдена", show_alert=True)
+            return
+
+        date = gen['date'][:16].replace('T', ' ')
+        fav_mark = "⭐ " if gen.get('is_favorite', False) else ""
+
+        msg = f"""📝 <b>Детали генерации</b> {fav_mark}
+
+💬 <b>Промпт:</b>
+<i>{gen['prompt']}</i>
+
+🌐 <b>English:</b>
+<code>{gen['english_prompt']}</code>
+
+━━━━━━━━━━━━━━━
+⚙️ <b>Параметры:</b>
+
+🎨 <b>Модель:</b> {gen['model']}
+📐 <b>Формат:</b> {gen['format']}"""
+
+        if gen.get('style') and gen['style'] != 'none':
+            msg += f"\n🖌 <b>Стиль:</b> {gen['style']}"
+
+        if gen.get('negative_prompt'):
+            msg += f"\n🚫 <b>Negative:</b> <code>{gen['negative_prompt']}</code>"
+
+        msg += f"\n\n📅 <b>Дата:</b> {date}"
+
+        keyboard = [
+            [InlineKeyboardButton("🔄 Использовать снова", callback_data=f"lib_reuse_{gen_id}")],
+            [InlineKeyboardButton("🔙 К истории", callback_data="lib_history_0")]
+        ]
+
+        await query.edit_message_text(
+            msg,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        return
+
+    # Повторное использование промпта из истории
+    if data.startswith("lib_reuse_"):
+        gen_id = float(data[10:])  # ID генерации
+        history = get_user_history(uid, limit=100)
+
+        gen = next((g for g in history if g['id'] == gen_id), None)
+
+        if not gen:
+            await query.answer("Запись не найдена", show_alert=True)
+            return
+
+        # Загружаем параметры в state
+        user_state[uid]["prompt"] = gen['prompt']
+        user_state[uid]["model"] = gen['model']
+        user_state[uid]["format"] = gen['format']
+        user_state[uid]["style"] = gen.get('style', 'none')
+        user_state[uid]["negative_prompt"] = gen.get('negative_prompt', '')
+
+        await query.answer("✅ Параметры загружены!", show_alert=True)
+
+        # Показываем предпросмотр
+        await show_final_prompt(query, uid)
+        return
+
+    if data == "lib_favorites":
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        favorites = get_favorites(uid)
+
+        if not favorites:
+            await query.answer("У вас нет избранных генераций", show_alert=True)
+            return
+
+        msg = "⭐ <b>Избранное:</b>\n\n"
+        for i, gen in enumerate(favorites[:10], 1):
+            date = gen['date'][:16].replace('T', ' ')
+            prompt_preview = gen['prompt'][:50] + "..." if len(gen['prompt']) > 50 else gen['prompt']
+            msg += f"{i}. <b>{prompt_preview}</b>\n"
+            msg += f"   📅 {date} | {gen['model']}\n"
+            msg += f"   <code>{gen['english_prompt'][:60]}...</code>\n\n"
+
+        keyboard = [[InlineKeyboardButton("🔙 К библиотеке", callback_data="lib_main")]]
+
+        await query.edit_message_text(
+            msg,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "lib_search":
+        user_state[uid]["awaiting_library_search"] = True
+        await query.edit_message_text(
+            "🔍 <b>Поиск по истории</b>\n\n"
+            "Отправьте текст для поиска по промптам:",
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "lib_clear":
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Да, очистить", callback_data="lib_clear_confirm"),
+                InlineKeyboardButton("❌ Отмена", callback_data="lib_main")
+            ]
+        ]
+
+        await query.edit_message_text(
+            "⚠️ <b>Очистка истории</b>\n\n"
+            "Удалить всю историю генераций (кроме избранного)?\n\n"
+            "Это действие нельзя отменить!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "lib_clear_confirm":
+        clear_history(uid)
+        await query.edit_message_text(
+            "✅ История очищена!\n\n"
+            "Избранные генерации сохранены."
+        )
+        return
+
+    if data == "lib_main":
+        # Возврат к главному экрану библиотеки
+        await query.message.delete()
+        await library_command(update, context)
+        return
+
+async def precheckout_callback(update, context):
+    """Обработка pre-checkout для Telegram Stars"""
+    query = update.pre_checkout_query
+    # Всегда подтверждаем платеж
+    await query.answer(ok=True)
+
+async def successful_payment(update, context):
+    """Обработка успешного платежа через Telegram Stars"""
+    payment = update.message.successful_payment
+    payload = payment.invoice_payload
+
+    try:
+        # Парсим payload (format: user_id:package_id)
+        user_id, package_id = payload.split(":")
+        user_id = int(user_id)
+
+        package = get_package_info(package_id)
+        if not package:
+            await update.message.reply_text("❌ Ошибка обработки платежа. Свяжитесь с поддержкой.")
+            return
+
+        # Добавляем генерации пользователю
+        new_balance = add_generations(user_id, package["generations"])
+
+        await update.message.reply_text(
+            f"""✅ <b>Платеж успешно обработан!</b>
+
+📦 Пакет: {package['name']}
+💎 Добавлено генераций: {package['generations']}
+📊 Новый баланс: {new_balance}
+
+Спасибо за покупку! Приятного использования 🎨""",
+            parse_mode="HTML"
+        )
+
+        print(f"[INFO] Payment processed: User {user_id} bought {package_id} package")
+
+    except Exception as e:
+        print(f"[ERROR] Payment processing error: {e}")
+        await update.message.reply_text(
+            "❌ Ошибка обработки платежа. Свяжитесь с поддержкой."
+        )
+
+async def inline_query(update, context):
+    """Обработка inline queries - быстрый доступ к пресетам и истории"""
+    query = update.inline_query.query
+    uid = update.inline_query.from_user.id
+
+    results = []
+
+    # Получаем пресеты пользователя
+    user_presets = get_user_presets(uid)
+
+    # Добавляем пресеты в результаты
+    for preset_name, preset_data in user_presets.items():
+        title = f"🎨 Пресет: {preset_name}"
+        description = f"{preset_data['model']} | {preset_data['format']}"
+        if preset_data.get('style') and preset_data['style'] != 'none':
+            description += f" | {preset_data['style']}"
+
+        message_text = f"Использую пресет '{preset_name}'\n\nНапишите /new чтобы начать генерацию с этими параметрами"
+
+        results.append(
+            InlineQueryResultArticle(
+                id=f"preset_{preset_name}",
+                title=title,
+                description=description,
+                input_message_content=InputTextMessageContent(message_text),
+                thumbnail_url="https://tools.uspeshnyy.ru/imagegenbot/preset-icon.png"
+            )
+        )
+
+    # Получаем последние промпты из истории
+    history = get_user_history(uid, limit=5)
+
+    for i, gen in enumerate(history):
+        prompt_preview = gen['prompt'][:50] + "..." if len(gen['prompt']) > 50 else gen['prompt']
+        title = f"📜 {prompt_preview}"
+        description = f"{gen['model']} | {gen['format']}"
+        date = gen['date'][:10]
+
+        message_text = f"Повторяю промпт: {gen['prompt']}\n\nНапишите /new для генерации"
+
+        results.append(
+            InlineQueryResultArticle(
+                id=f"history_{gen['id']}",
+                title=title,
+                description=f"{description} ({date})",
+                input_message_content=InputTextMessageContent(message_text),
+                thumbnail_url="https://tools.uspeshnyy.ru/imagegenbot/history-icon.png"
+            )
+        )
+
+    # Если запрос пустой и нет результатов
+    if not results:
+        results.append(
+            InlineQueryResultArticle(
+                id="empty",
+                title="📝 Нет сохраненных пресетов или истории",
+                description="Создайте изображение в боте для сохранения истории",
+                input_message_content=InputTextMessageContent(
+                    "Напишите /start для начала работы с ботом"
+                )
+            )
+        )
+
+    await update.inline_query.answer(results, cache_time=10)
+
+async def post_init(application):
+    """Вызывается после инициализации приложения"""
+    await setup_commands(application)
+    print("Menu commands set successfully")
+
+def main():
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+
+    # Регистрируем обработчики команд
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("new", new_image))
+    app.add_handler(CommandHandler("styletransfer", style_transfer_command))
+    app.add_handler(CommandHandler("styleguide", style_guide_command))
+    app.add_handler(CommandHandler("sketch", sketch_command))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("profile", profile_command))
+    app.add_handler(CommandHandler("lib", library_command))
+    app.add_handler(CommandHandler("presets", presets_command))
+    app.add_handler(CommandHandler("buy", buy_command))
+
+    # Админские команды
+    app.add_handler(CommandHandler("admin_users", admin_users_command))
+    app.add_handler(CommandHandler("admin_add", admin_add_command))
+
+    # Обработчики сообщений и callback
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
+    app.add_handler(CallbackQueryHandler(callbacks))
+    app.add_handler(InlineQueryHandler(inline_query))
+
+    # Обработчики платежей
+    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
+
+    print("Bot started successfully...")
+    print("Inline mode enabled - users can use @botname in any chat")
+    print("Payment system enabled - Telegram Stars + CryptoBot")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()

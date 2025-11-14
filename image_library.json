@@ -1,0 +1,31 @@
+{
+  "813910081": {
+    "history": [
+      {
+        "id": 1763159584.652085,
+        "date": "2025-11-15T01:33:04.652085",
+        "prompt": "Жираф удивлённо моргает а звезда падает",
+        "english_prompt": "The giraffe blinks in surprise as the star falls., high quality, detailed",
+        "model": "sd3.5-large",
+        "format": "1:1",
+        "style": "none",
+        "negative_prompt": "",
+        "image_url": null,
+        "is_favorite": false
+      },
+      {
+        "id": 1763160993.097693,
+        "date": "2025-11-15T01:56:33.097693",
+        "prompt": "Жираф ест мороженое",
+        "english_prompt": "The giraffe is eating ice cream., high quality, detailed",
+        "model": "sd3.5-large",
+        "format": "1:1",
+        "style": "none",
+        "negative_prompt": "Bad",
+        "image_url": null,
+        "is_favorite": false
+      }
+    ],
+    "favorites": []
+  }
+}

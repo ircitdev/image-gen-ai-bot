@@ -1,0 +1,1469 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Uspeshnyy Image Gen Bot - Справка</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #0071e3; /* Apple Blue */
+            --light-background: #e0e0e1;
+            --dark-text: #1d1d1f;
+            --light-text: #6e6e73;
+            --border-color: #e5e5ea;
+            --bg-white: #ffffff;
+            --shadow: rgba(0, 0, 0, 0.1);
+            --highlight-color: #ff2d55; /* Apple Red */
+            --link-color: #007aff;
+            --accent-gray: #d1d1d6;
+            --glass-bg: rgba(255, 255, 255, 0.2); /* Прозрачный фон для стеклянного эффекта */
+        }
+
+        /* Подключение шрифтов */
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Roboto:wght@400;500&display=swap');
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: var(--light-background);
+            color: var(--dark-text);
+            line-height: 1.6;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+        }
+
+        .container {
+    max-width: 95%;
+    width: 900px;
+    margin: 0 auto;
+}
+
+
+        .header {
+            background: url(helpbg_p.jpg) top center no-repeat #012ae6;
+            background-size: contain;
+            color: white;
+            padding: 35px 30px;
+            text-align: center;
+            border-radius: 16px 16px 0 0;
+        }
+
+        .header h1 {
+            font-size: 2.8em;
+            margin-bottom: 12px;
+            font-weight: 700;
+            font-family: 'Montserrat', sans-serif; /* Заголовки с Montserrat */
+        }
+
+        .header .subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+            font-weight: 300;
+            font-family: 'Roboto', sans-serif; /* Текст с Roboto */
+        }
+
+        .content {
+            padding: 40px 30px;
+            background: var(--bg-white);
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section-title {
+            font-size: 1.8em;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: 'Montserrat', sans-serif; /* Заголовки с Montserrat */
+        }
+
+        .section-title::before {
+            content: '';
+            width: 6px;
+            height: 30px;
+            background: var(--primary-color);
+            border-radius: 3px;
+        }
+
+        /* Эффект жидкого стекла для карточек */
+        .card {
+            background: var(--glass-bg);
+            border-left: 4px solid var(--primary-color);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(12px); /* Размытие фона */
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .card:hover {
+            transform: translateX(8px);
+            box-shadow: 0 8px 25px var(--shadow);
+        }
+
+        .card-title {
+            font-size: 1.5em;
+            color: var(--primary-color);
+            margin-bottom: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: 'Montserrat', sans-serif; /* Заголовки с Montserrat */
+        }
+
+        .card-title .emoji {
+            font-size: 1.3em;
+        }
+
+        .card-description {
+            color: var(--light-text);
+            margin-bottom: 15px;
+            line-height: 1.8;
+            font-family: 'Roboto', sans-serif; /* Текст с Roboto */
+        }
+
+        .steps {
+            background: var(--bg-white);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+
+        .step {
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .step:last-child {
+            border-bottom: none;
+        }
+
+        .step-number {
+            background: var(--primary-color);
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .step-text {
+            flex: 1;
+            padding-top: 2px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: var(--accent-gray);
+            color: var(--primary-color);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin: 5px 5px 5px 0;
+            border: 1px solid var(--primary-color);
+        }
+
+        .badge.blue {
+            background: var(--light-background);
+            color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .badge.required {
+            background: #FFEBEE;
+            color: #D32F2F;
+            border-color: #D32F2F;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-white);
+        }
+
+        th {
+            background: var(--primary-color);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover {
+            background: var(--light-background);
+        }
+
+        code {
+            background: var(--accent-gray);
+            color: var(--primary-color);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .example {
+            background: var(--accent-gray);
+            border-left: 4px solid var(--primary-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.8;
+        }
+
+        .example-title {
+            color: var(--primary-color);
+            font-weight: 600;
+            margin-bottom: 10px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto;
+        }
+
+        .info-box {
+            background: var(--light-background);
+            border-radius: 12px;
+            padding: 25px;
+            margin: 20px 0;
+            border: 2px solid var(--primary-color);
+        }
+
+        .info-box-title {
+            font-size: 1.2em;
+            color: var(--primary-color);
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .feature-card {
+            background: var(--bg-white);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 2px solid var(--light-background);
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--primary-color);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px var(--shadow);
+        }
+
+        .feature-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .feature-title {
+            font-size: 1.1em;
+            color: var(--primary-color);
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .feature-description {
+            font-size: 0.9em;
+            color: var(--light-text);
+        }
+
+        .footer {
+            background: var(--dark-text);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .footer-links {
+            margin-top: 15px;
+        }
+
+        .footer-link {
+            color: var(--link-color);
+            text-decoration: none;
+            margin: 0 15px;
+            transition: opacity 0.3s;
+        }
+
+        .footer-link:hover {
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .header h1 {
+                font-size: 1.4em;
+            }
+
+            .header .subtitle {
+                font-size: 0.95em;
+            }
+
+            .content {
+                padding: 20px 20px;
+            }
+
+            .section-title {
+                font-size: 1.4em;
+            }
+
+            .card {
+    background: var(--glass-bg);
+    border-left: 4px solid var(--primary-color);
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 20px;
+    backdrop-filter: blur(12px); /* Размытие фона */
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+            .card-title {
+                font-size: 1.2em;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            table {
+                font-size: 0.9em;
+            }
+
+            th, td {
+                padding: 10px;
+            }
+        }
+
+        .scroll-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--primary-color);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 5px 20px var(--shadow);
+            transition: transform 0.3s;
+            font-size: 1.5em;
+        }
+
+        .scroll-top:hover {
+            transform: scale(1.1);
+        }
+
+        /* Стили для изображений-примеров */
+        .example-image {
+            width: 100%;
+            max-width: 600px;
+            height: auto;
+            border-radius: 12px;
+            margin: 20px auto;
+            display: block;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+            border: 2px solid var(--border-color);
+        }
+
+        .example-images-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .example-image-item {
+            text-align: center;
+        }
+
+        .example-image-item img {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border: 2px solid var(--border-color);
+        }
+
+        .example-image-caption {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: var(--light-text);
+            font-weight: 500;
+        }
+
+        .comparison-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .comparison-item {
+            text-align: center;
+        }
+
+        .comparison-item img {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border: 2px solid var(--border-color);
+        }
+
+        .comparison-label {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .comparison-label.before {
+            background: #FFEBEE;
+            color: #D32F2F;
+        }
+
+        .comparison-label.after {
+            background: #E8F5E9;
+            color: #388E3C;
+        }
+
+        @media (max-width: 768px) {
+            .comparison-container {
+                grid-template-columns: 1fr;
+            }
+
+            .example-images-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Uspeshnyy 🎨 Image Gen</h1>
+            <p class="subtitle">Полное руководство по генерации изображений с AI</p>
+        </div>
+
+        <div class="content">
+            <!-- Введение -->
+            <div class="section">
+                <h2 class="section-title">Добро пожаловать!</h2>
+                <div class="info-box">
+                    <div class="info-box-title">⚡ Возможности бота</div>
+                    <p>Uspeshnyy Image Gen Bot - это мощный инструмент для создания изображений с использованием искусственного интеллекта Stable Diffusion 3.5. Бот поддерживает генерацию из текста, перенос стиля, работу с набросками и многое другое!</p>
+                </div>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🖼️</div>
+                        <div class="feature-title">SD 3.5 Модели</div>
+                        <div class="feature-description">4 модели на выбор для разных задач</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎭</div>
+                        <div class="feature-title">18 Стилей</div>
+                        <div class="feature-description">От фотореализма до пиксель-арта</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📐</div>
+                        <div class="feature-title">10 Форматов</div>
+                        <div class="feature-description">Любое соотношение сторон</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🤖</div>
+                        <div class="feature-title">ChatGPT-4o</div>
+                        <div class="feature-description">Автоматический перевод и улучшение промптов</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔍</div>
+                        <div class="feature-title">AI Инструменты</div>
+                        <div class="feature-description">Upscale, Variations, Remove BG, Face Restore, Inpainting</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">💾</div>
+                        <div class="feature-title">Пресеты</div>
+                        <div class="feature-description">Сохранение и переиспользование настроек</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📱</div>
+                        <div class="feature-title">Inline Mode</div>
+                        <div class="feature-description">Генерация из любого чата</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">💳</div>
+                        <div class="feature-title">Платные пакеты</div>
+                        <div class="feature-description">Telegram Stars и Crypto</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Основные команды -->
+            <div class="section">
+                <h2 class="section-title">📋 Основные команды</h2>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">🆕</span> /new - Новое изображение</div>
+                    <div class="card-description">
+                        Создание изображения с полным контролем параметров: модель, формат, стиль, освещение и качество.
+                    </div>
+                    <div class="steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-text">Отправьте текст, URL или фото с описанием</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-text">Выберите модель SD 3.5 (large, large-turbo, medium, flash)</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <div class="step-text">Выберите формат изображения (1:1, 16:9, 9:16 и др.)</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">4</div>
+                            <div class="step-text">Настройте тип кадра, ракурс, стиль, освещение и качество</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">5</div>
+                            <div class="step-text">Проверьте финальный промпт и нажмите "Создать"</div>
+                        </div>
+                    </div>
+                    <div class="example">
+                        <div class="example-title">💡 Пример:</div>
+                        Вы: Кот сидит на стуле<br>
+                        Бот: Выбери модель → SD 3.5 Large<br>
+                        Бот: Выбери формат → 1:1<br>
+                        ... (выбор параметров) ...<br>
+                        Бот: ✅ Изображение готово
+                    </div>
+                    <img src="examples/command_new.jpg" alt="Пример /new" class="example-image" onerror="this.src='https://via.placeholder.com/600x600/e0e0e1/0071e3?text=New+Command+Example'">
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">🎨</span> /styletransfer - Перенос стиля</div>
+                    <div class="card-description">
+                        Применяет стиль одного изображения к другому. Идеально для стилизации фотографий.
+                    </div>
+                    <div class="steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-text">Загрузите исходное изображение (к которому применяется стиль)</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-text">Загрузите изображение-стиль (откуда берется стиль)</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <div class="step-text">Введите параметры: промпт, negative prompt, strength параметры</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <span class="badge">Prompt</span>
+                        <span class="badge">Negative Prompt</span>
+                        <span class="badge required">Style Strength (0.1-1.0)</span>
+                        <span class="badge required">Composition Fidelity (0.1-1.0)</span>
+                        <span class="badge required">Change Strength (0.1-1.0)</span>
+                    </div>
+                    <div class="example-images-grid">
+                        <div class="example-image-item">
+                            <img src="examples/styletransfer_init.jpg" alt="Исходное" onerror="this.src='https://via.placeholder.com/300x300/e0e0e1/0071e3?text=Init+Image'">
+                            <div class="example-image-caption">Исходное</div>
+                        </div>
+                        <div class="example-image-item">
+                            <img src="examples/styletransfer_style.jpg" alt="Стиль" onerror="this.src='https://via.placeholder.com/300x300/e0e0e1/0071e3?text=Style+Image'">
+                            <div class="example-image-caption">Стиль</div>
+                        </div>
+                        <div class="example-image-item">
+                            <img src="examples/styletransfer_result.jpg" alt="Результат" onerror="this.src='https://via.placeholder.com/300x300/e0e0e1/0071e3?text=Result'">
+                            <div class="example-image-caption">Результат</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">🖼️</span> /styleguide - Генерация по стилю</div>
+                    <div class="card-description">
+                        Создает НОВОЕ изображение на основе промпта, используя стиль референсного изображения.
+                    </div>
+                    <div class="steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-text">Загрузите изображение-референс стиля</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-text">Введите промпт (что генерировать) - обязательно!</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <div class="step-text">Выберите формат и точность следования стилю</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <span class="badge required">Prompt - обязательно!</span>
+                        <span class="badge">Negative Prompt</span>
+                        <span class="badge blue">Aspect Ratio</span>
+                        <span class="badge required">Fidelity (0.1-1.0)</span>
+                    </div>
+                    <img src="examples/styleguide_example.jpg" alt="Пример Style Guide" class="example-image" onerror="this.src='https://via.placeholder.com/600x400/e0e0e1/0071e3?text=Style+Guide+Example'">
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">✏️</span> /sketch - Генерация из наброска</div>
+                    <div class="card-description">
+                        Создает детализированное изображение на основе наброска или скетча.
+                    </div>
+                    <div class="steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-text">Загрузите изображение наброска</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-text">Введите промпт (описание желаемого результата) - обязательно!</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <div class="step-text">Настройте силу следования наброску (0.1-1.0)</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <span class="badge required">Prompt - обязательно!</span>
+                        <span class="badge">Negative Prompt</span>
+                        <span class="badge required">Control Strength (0.1-1.0)</span>
+                    </div>
+                    <div class="comparison-container">
+                        <div class="comparison-item">
+                            <img src="examples/sketch_input.jpg" alt="Набросок" onerror="this.src='https://via.placeholder.com/400x400/ffffff/000000?text=Sketch+Input'">
+                            <div class="comparison-label before">Набросок</div>
+                        </div>
+                        <div class="comparison-item">
+                            <img src="examples/sketch_result.jpg" alt="Детализация" onerror="this.src='https://via.placeholder.com/400x400/e0e0e1/0071e3?text=Detailed+Result'">
+                            <div class="comparison-label after">Детализация</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Модели SD 3.5 -->
+            <div class="section">
+                <h2 class="section-title">🤖 Модели Stable Diffusion 3.5</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Модель</th>
+                                <th>Описание</th>
+                                <th>Использование</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>SD 3.5 Large</code></td>
+                                <td>Максимальное качество и детализация</td>
+                                <td>Финальные работы, высокое качество</td>
+                            </tr>
+                            <tr>
+                                <td><code>SD 3.5 Large Turbo</code></td>
+                                <td>Быстрая версия Large модели</td>
+                                <td>Быстрая генерация с хорошим качеством</td>
+                            </tr>
+                            <tr>
+                                <td><code>SD 3.5 Medium</code></td>
+                                <td>Баланс качества и скорости</td>
+                                <td>Повседневное использование</td>
+                            </tr>
+                            <tr>
+                                <td><code>SD 3.5 Flash</code></td>
+                                <td>Самая быстрая генерация</td>
+                                <td>Быстрые тесты, итерации</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Форматы изображений -->
+            <div class="section">
+                <h2 class="section-title">📐 Форматы изображений</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Формат</th>
+                                <th>Описание</th>
+                                <th>Применение</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>1:1</code></td>
+                                <td>Квадрат</td>
+                                <td>Instagram, аватары, иконки</td>
+                            </tr>
+                            <tr>
+                                <td><code>16:9</code></td>
+                                <td>Горизонтально</td>
+                                <td>YouTube, презентации, широкоформатные</td>
+                            </tr>
+                            <tr>
+                                <td><code>9:16</code></td>
+                                <td>Вертикально</td>
+                                <td>Stories, TikTok, Reels</td>
+                            </tr>
+                            <tr>
+                                <td><code>21:9</code></td>
+                                <td>Ультра-широкий</td>
+                                <td>Панорамы, баннеры</td>
+                            </tr>
+                            <tr>
+                                <td><code>9:21</code></td>
+                                <td>Ультра-вертикальный</td>
+                                <td>Мобильные обои, длинные Stories</td>
+                            </tr>
+                            <tr>
+                                <td><code>3:2, 5:4, 4:5, 2:3</code></td>
+                                <td>Промежуточные форматы</td>
+                                <td>Печать, специфические задачи</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Стили -->
+            <div class="section">
+                <h2 class="section-title">🎭 Доступные стили</h2>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">📷</div>
+                        <div class="feature-title">Photographic</div>
+                        <div class="feature-description">Фотореалистичный стиль</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎬</div>
+                        <div class="feature-title">Cinematic</div>
+                        <div class="feature-description">Кинематографический</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎌</div>
+                        <div class="feature-title">Anime</div>
+                        <div class="feature-description">Аниме стиль</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">💎</div>
+                        <div class="feature-title">3D Model</div>
+                        <div class="feature-description">3D моделирование</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎨</div>
+                        <div class="feature-title">Digital Art</div>
+                        <div class="feature-description">Цифровое искусство</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📖</div>
+                        <div class="feature-title">Comic Book</div>
+                        <div class="feature-description">Комиксы</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🏰</div>
+                        <div class="feature-title">Fantasy Art</div>
+                        <div class="feature-description">Фэнтези</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎮</div>
+                        <div class="feature-title">Pixel Art</div>
+                        <div class="feature-description">Пиксельная графика</div>
+                    </div>
+                </div>
+                <div style="margin-top: 20px; text-align: center;">
+                    <p style="color: var(--medium-text);">И еще 10 стилей: Analog Film, Enhance, Isometric, Line Art, Low Poly, Modeling Compound, Neon Punk, Origami, Tile Texture</p>
+                </div>
+            </div>
+
+            <!-- Сравнение команд -->
+            <div class="section">
+                <h2 class="section-title">⚖️ Сравнение команд</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Команда</th>
+                                <th>Входные данные</th>
+                                <th>Что делает</th>
+                                <th>Prompt</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>/new</code></td>
+                                <td>Текст/URL</td>
+                                <td>Генерация с параметрами</td>
+                                <td>Текст</td>
+                            </tr>
+                            <tr>
+                                <td><code>/styletransfer</code></td>
+                                <td>2 изображения</td>
+                                <td>Применяет стиль к фото</td>
+                                <td>Опционально</td>
+                            </tr>
+                            <tr>
+                                <td><code>/styleguide</code></td>
+                                <td>1 изображение</td>
+                                <td>Создает новое в стиле</td>
+                                <td>Обязательно</td>
+                            </tr>
+                            <tr>
+                                <td><code>/sketch</code></td>
+                                <td>1 набросок</td>
+                                <td>Детализирует скетч</td>
+                                <td>Обязательно</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Refinement Mode -->
+            <div class="section">
+                <h2 class="section-title">🔄 Режим уточнения (Refinement)</h2>
+                <div class="info-box">
+                    <div class="info-box-title">💡 Быстрое улучшение результата</div>
+                    <p>После генерации изображения вы можете просто отправить новый текст боту - он автоматически воспримет его как уточнение к текущему промпту и сгенерирует новое изображение с теми же параметрами!</p>
+                </div>
+                <div class="example">
+                    <div class="example-title">Пример работы:</div>
+                    [Изображение сгенерировано]<br>
+                    Бот: ✅ Изображение готово<br>
+                    &lt;code&gt;cat sitting on a chair, photographic, high quality&lt;/code&gt;<br>
+                    <br>
+                    Вы: добавь шляпу коту<br>
+                    Бот: ⏳ Генерация изображения...<br>
+                    [Новое изображение с котом в шляпе]
+                </div>
+            </div>
+
+            <!-- Рекомендации по параметрам -->
+            <div class="section">
+                <h2 class="section-title">⚙️ Рекомендации по параметрам</h2>
+
+                <div class="card">
+                    <div class="card-title">Style Transfer</div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Эффект</th>
+                                    <th>Style Strength</th>
+                                    <th>Composition Fidelity</th>
+                                    <th>Change Strength</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Сильный стиль</td>
+                                    <td>0.9-1.0</td>
+                                    <td>0.7-1.0</td>
+                                    <td>0.7-1.0</td>
+                                </tr>
+                                <tr>
+                                    <td>Средний</td>
+                                    <td>0.5-0.7</td>
+                                    <td>0.4-0.6</td>
+                                    <td>0.5-0.7</td>
+                                </tr>
+                                <tr>
+                                    <td>Легкий</td>
+                                    <td>0.1-0.3</td>
+                                    <td>0.1-0.3</td>
+                                    <td>0.2-0.4</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Sketch Control</div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Control Strength</th>
+                                    <th>Эффект</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>0.7-1.0</td>
+                                    <td>Точное следование наброску</td>
+                                </tr>
+                                <tr>
+                                    <td>0.4-0.6</td>
+                                    <td>Баланс между скетчем и AI</td>
+                                </tr>
+                                <tr>
+                                    <td>0.1-0.3</td>
+                                    <td>Свободная интерпретация</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Style Guide Fidelity</div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Fidelity</th>
+                                    <th>Эффект</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>0.7-1.0</td>
+                                    <td>Максимальная точность стиля</td>
+                                </tr>
+                                <tr>
+                                    <td>0.4-0.6</td>
+                                    <td>Вдохновение стилем</td>
+                                </tr>
+                                <tr>
+                                    <td>0.1-0.3</td>
+                                    <td>Легкое влияние стиля</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Дополнительные команды -->
+            <div class="section">
+                <h2 class="section-title">🛠️ Дополнительные команды</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Команда</th>
+                                <th>Описание</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>/start</code></td>
+                                <td>Приветствие и краткая информация</td>
+                            </tr>
+                            <tr>
+                                <td><code>/help</code></td>
+                                <td>Эта страница справки</td>
+                            </tr>
+                            <tr>
+                                <td><code>/profile</code></td>
+                                <td>Информация о вашем профиле и статистике</td>
+                            </tr>
+                            <tr>
+                                <td><code>/lib</code></td>
+                                <td>Библиотека ваших сгенерированных изображений</td>
+                            </tr>
+                            <tr>
+                                <td><code>/presets</code></td>
+                                <td>Управление пресетами параметров</td>
+                            </tr>
+                            <tr>
+                                <td><code>/buy</code></td>
+                                <td>Покупка дополнительных генераций</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- AI Инструменты -->
+            <div class="section">
+                <h2 class="section-title">🔬 AI Инструменты для улучшения изображений</h2>
+                <div class="info-box">
+                    <div class="info-box-title">✨ Доступны после генерации</div>
+                    <p>После создания изображения вы получаете доступ к мощным AI инструментам для его улучшения и трансформации. Все функции доступны через кнопки под сгенерированным изображением.</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">🔍</span> Upscale - Увеличение разрешения</div>
+                    <div class="card-description">
+                        Увеличивает разрешение изображения в 2-4 раза с сохранением качества и деталей. Использует консервативный алгоритм Stability.ai, который не искажает исходное изображение.
+                    </div>
+                    <div class="comparison-container">
+                        <div class="comparison-item">
+                            <img src="examples/upscale_before.jpg" alt="До увеличения" onerror="this.src='https://via.placeholder.com/400x400/e0e0e1/0071e3?text=Before+Upscale'">
+                            <div class="comparison-label before">До (512x512)</div>
+                        </div>
+                        <div class="comparison-item">
+                            <img src="examples/upscale_after.jpg" alt="После увеличения" onerror="this.src='https://via.placeholder.com/800x800/e0e0e1/0071e3?text=After+Upscale+2048x2048'">
+                            <div class="comparison-label after">После (2048x2048)</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <span class="badge blue">Не использует генерацию</span>
+                        <span class="badge">Мгновенный результат</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">🎭</span> Variations - Создание вариаций</div>
+                    <div class="card-description">
+                        Создает альтернативные версии изображения, сохраняя общую концепцию но с небольшими вариациями. Идеально для поиска идеального результата.
+                    </div>
+                    <div class="example-images-grid">
+                        <div class="example-image-item">
+                            <img src="examples/variations_original.jpg" alt="Оригинал" onerror="this.src='https://via.placeholder.com/300x300/e0e0e1/0071e3?text=Original'">
+                            <div class="example-image-caption">Оригинал</div>
+                        </div>
+                        <div class="example-image-item">
+                            <img src="examples/variations_1.jpg" alt="Вариация 1" onerror="this.src='https://via.placeholder.com/300x300/e0e0e1/0071e3?text=Variation+1'">
+                            <div class="example-image-caption">Вариация 1</div>
+                        </div>
+                        <div class="example-image-item">
+                            <img src="examples/variations_2.jpg" alt="Вариация 2" onerror="this.src='https://via.placeholder.com/300x300/e0e0e1/0071e3?text=Variation+2'">
+                            <div class="example-image-caption">Вариация 2</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <span class="badge required">Использует 1 генерацию</span>
+                        <span class="badge">На основе оригинального промпта</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">🖌️</span> Remove Background - Удаление фона</div>
+                    <div class="card-description">
+                        Автоматически удаляет фон с изображения, создавая PNG с прозрачностью. Отправляется как документ для сохранения прозрачности.
+                    </div>
+                    <div class="comparison-container">
+                        <div class="comparison-item">
+                            <img src="examples/remove_bg_before.jpg" alt="С фоном" onerror="this.src='https://via.placeholder.com/400x400/e0e0e1/0071e3?text=With+Background'">
+                            <div class="comparison-label before">С фоном</div>
+                        </div>
+                        <div class="comparison-item">
+                            <img src="examples/remove_bg_after.png" alt="Без фона" onerror="this.src='https://via.placeholder.com/400x400/ffffff/0071e3?text=Transparent+Background'">
+                            <div class="comparison-label after">Без фона (PNG)</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <span class="badge blue">Не использует генерацию</span>
+                        <span class="badge">PNG с прозрачностью</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">👤</span> Face Restore - Восстановление лиц</div>
+                    <div class="card-description">
+                        Улучшает качество лиц на фотографиях: повышает детализацию кожи, глаз, черт лица. Использует creative upscale для профессионального результата.
+                    </div>
+                    <div class="comparison-container">
+                        <div class="comparison-item">
+                            <img src="examples/face_restore_before.jpg" alt="До восстановления" onerror="this.src='https://via.placeholder.com/400x400/e0e0e1/0071e3?text=Before+Face+Restore'">
+                            <div class="comparison-label before">До</div>
+                        </div>
+                        <div class="comparison-item">
+                            <img src="examples/face_restore_after.jpg" alt="После восстановления" onerror="this.src='https://via.placeholder.com/400x400/e0e0e1/0071e3?text=After+Face+Restore'">
+                            <div class="comparison-label after">После</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <span class="badge blue">Не использует генерацию</span>
+                        <span class="badge">Идеально для портретов</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">🎨</span> Inpainting - Редактирование частей изображения</div>
+                    <div class="card-description">
+                        Позволяет изменить определенные части изображения. Работает в два этапа:
+                    </div>
+                    <div class="steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-text">Загрузите маску - изображение где белые области будут изменены, черные останутся</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-text">Отправьте описание того, что должно появиться на месте белых областей</div>
+                        </div>
+                    </div>
+                    <div class="example-images-grid">
+                        <div class="example-image-item">
+                            <img src="examples/inpaint_original.jpg" alt="Оригинал" onerror="this.src='https://via.placeholder.com/300x300/e0e0e1/0071e3?text=Original+Image'">
+                            <div class="example-image-caption">1. Оригинал</div>
+                        </div>
+                        <div class="example-image-item">
+                            <img src="examples/inpaint_mask.jpg" alt="Маска" onerror="this.src='https://via.placeholder.com/300x300/000000/ffffff?text=Mask+(White+Areas)'">
+                            <div class="example-image-caption">2. Маска</div>
+                        </div>
+                        <div class="example-image-item">
+                            <img src="examples/inpaint_result.jpg" alt="Результат" onerror="this.src='https://via.placeholder.com/300x300/e0e0e1/0071e3?text=Result'">
+                            <div class="example-image-caption">3. Результат</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <span class="badge blue">Не использует генерацию</span>
+                        <span class="badge">Точное редактирование</span>
+                    </div>
+                    <div class="example">
+                        <div class="example-title">Пример использования:</div>
+                        1. Нажмите кнопку "🎨 Inpaint"<br>
+                        2. Загрузите маску (можно нарисовать в любом редакторе)<br>
+                        3. Напишите промпт: "красивый закат"<br>
+                        4. Получите изображение с измененным фоном
+                    </div>
+                </div>
+            </div>
+
+            <!-- UX Улучшения -->
+            <div class="section">
+                <h2 class="section-title">⚡ UX Возможности</h2>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">👁️</span> Предпросмотр параметров</div>
+                    <div class="card-description">
+                        Перед генерацией вы видите красиво отформатированный предпросмотр ВСЕХ выбранных параметров: промпт, модель с описанием, формат, стиль и negative prompt. Это помогает убедиться, что все настроено правильно.
+                    </div>
+                    <img src="examples/ui_preview.jpg" alt="Предпросмотр параметров" class="example-image" onerror="this.src='https://via.placeholder.com/600x400/e0e0e1/0071e3?text=Parameters+Preview+Screenshot'">
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">🔄</span> Повтор промпта из истории</div>
+                    <div class="card-description">
+                        В библиотеке (<code>/lib</code>) каждое изображение теперь кликабельно. Нажмите на него, чтобы увидеть детали, и используйте кнопку "🔄 Использовать снова" чтобы загрузить ВСЕ параметры этой генерации (модель, формат, стиль, negative prompt) для повторного использования.
+                    </div>
+                    <img src="examples/ui_history_reuse.jpg" alt="Повтор из истории" class="example-image" onerror="this.src='https://via.placeholder.com/600x400/e0e0e1/0071e3?text=History+Reuse+Screenshot'">
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">📱</span> Inline Mode</div>
+                    <div class="card-description">
+                        Генерируйте изображения прямо из любого чата! Просто наберите <code>@вашботname</code> в любом диалоге, и вы увидите список ваших пресетов и последних промптов. Выберите нужный и отправьте в чат.
+                    </div>
+                    <img src="examples/ui_inline_mode.jpg" alt="Inline Mode" class="example-image" onerror="this.src='https://via.placeholder.com/600x400/e0e0e1/0071e3?text=Inline+Mode+Screenshot'">
+                    <div class="example">
+                        <div class="example-title">Как использовать:</div>
+                        1. В любом чате наберите @uspeshnyy_imagegen_bot<br>
+                        2. Появится список ваших пресетов и истории<br>
+                        3. Выберите нужный пункт<br>
+                        4. Откройте бота для завершения генерации
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">⏱️</span> Прогресс генерации</div>
+                    <div class="card-description">
+                        Во время генерации вы видите детальный прогресс в 3 этапа:
+                    </div>
+                    <div class="steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-text">Обработка промпта с помощью ChatGPT-4o</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-text">Генерация изображения (с указанием модели и примерного времени)</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <div class="step-text">Отправка результата</div>
+                        </div>
+                    </div>
+                    <img src="examples/ui_progress.jpg" alt="Прогресс генерации" class="example-image" onerror="this.src='https://via.placeholder.com/600x400/e0e0e1/0071e3?text=Progress+Screenshot'">
+                    <div style="margin-top: 15px;">
+                        <span class="badge">SD 3.5 Large: ~45 сек</span>
+                        <span class="badge">Large Turbo: ~30 сек</span>
+                        <span class="badge">Medium: ~25 сек</span>
+                        <span class="badge">Flash: ~15 сек</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title"><span class="emoji">💾</span> Система пресетов</div>
+                    <div class="card-description">
+                        Сохраняйте любимые комбинации параметров и используйте их снова! После генерации нажмите "💾 Сохранить как пресет", дайте ему имя, и он будет доступен в <code>/presets</code> и в Inline Mode.
+                    </div>
+                    <img src="examples/ui_presets.jpg" alt="Система пресетов" class="example-image" onerror="this.src='https://via.placeholder.com/600x400/e0e0e1/0071e3?text=Presets+Screenshot'">
+                </div>
+            </div>
+
+            <!-- Платные пакеты -->
+            <div class="section">
+                <h2 class="section-title">💳 Платные пакеты генераций</h2>
+                <div class="info-box">
+                    <div class="info-box-title">🎁 Бесплатный лимит</div>
+                    <p>Каждый новый пользователь получает <strong>10 бесплатных генераций</strong>. После использования лимита доступна покупка дополнительных пакетов через Telegram Stars или криптовалюту.</p>
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Пакет</th>
+                                <th>Генераций</th>
+                                <th>Telegram Stars</th>
+                                <th>USDT (CryptoBot)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Starter</strong></td>
+                                <td>50</td>
+                                <td>100 ⭐</td>
+                                <td>$1.00</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Pro</strong></td>
+                                <td>150</td>
+                                <td>250 ⭐</td>
+                                <td>$2.50</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Premium</strong></td>
+                                <td>500</td>
+                                <td>700 ⭐</td>
+                                <td>$7.00</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Unlimited</strong></td>
+                                <td>9999</td>
+                                <td>2000 ⭐</td>
+                                <td>$20.00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Как купить генерации?</div>
+                    <div class="steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-text">Используйте команду <code>/buy</code></div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-text">Выберите нужный пакет</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <div class="step-text">Выберите способ оплаты: Telegram Stars или Crypto (USDT)</div>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">4</div>
+                            <div class="step-text">Завершите оплату - генерации зачислятся автоматически</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <div class="info-box-title">🎯 Реферальная программа</div>
+                    <p>Пригласите друзей и получайте <strong>+5 генераций</strong> за каждого, кто сделает свою первую генерацию! Ваша реферальная ссылка доступна в <code>/profile</code>.</p>
+                </div>
+            </div>
+
+            <!-- Советы -->
+            <div class="section">
+                <h2 class="section-title">💡 Полезные советы</h2>
+                <div class="card">
+                    <div class="card-description">
+                        <strong>1. Используйте описательные промпты:</strong> Чем детальнее описание, тем лучше результат. Указывайте объекты, действия, цвета, освещение, настроение.
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-description">
+                        <strong>2. Экспериментируйте с моделями:</strong> Large для качества, Flash для скорости. Turbo - золотая середина.
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-description">
+                        <strong>3. Используйте Negative Prompt:</strong> Укажите что НЕ должно быть на изображении (например: "blurry, low quality, distorted").
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-description">
+                        <strong>4. Режим Refinement:</strong> Не нравится результат? Просто опишите что изменить - бот сгенерирует новую версию.
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-description">
+                        <strong>5. Сохраняйте пресеты:</strong> Нашли идеальную комбинацию параметров? Сохраните ее как пресет для быстрого доступа.
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-description">
+                        <strong>6. AI инструменты не тратят генерации:</strong> Upscale, Remove BG, Face Restore и Inpainting НЕ используют ваши платные генерации!
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-description">
+                        <strong>7. Используйте Inline Mode:</strong> Быстрый доступ к боту из любого чата через <code>@botname</code>.
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-description">
+                        <strong>8. Следите за прогрессом:</strong> Генерация показывает 3 этапа с примерным временем ожидания.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Кнопки действий -->
+            <div class="section">
+                <h2 class="section-title">🎛️ Доступные действия после генерации</h2>
+                <div class="info-box">
+                    <div class="info-box-title">⚡ Панель управления</div>
+                    <p>После каждой генерации под изображением появляется панель с кнопками действий. Все изображения автоматически получают watermark с логотипом бота.</p>
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Кнопка</th>
+                                <th>Действие</th>
+                                <th>Использует генерацию?</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>✏️ Modify</code></td>
+                                <td>Изменить промпт с сохранением параметров</td>
+                                <td>Нет</td>
+                            </tr>
+                            <tr>
+                                <td><code>🖼️ Reference this</code></td>
+                                <td>Использовать изображение как референс</td>
+                                <td>Нет</td>
+                            </tr>
+                            <tr>
+                                <td><code>🎨 More like this</code></td>
+                                <td>Генерация похожего изображения</td>
+                                <td>Да (1 генерация)</td>
+                            </tr>
+                            <tr>
+                                <td><code>🔄 Reload</code></td>
+                                <td>Перегенерировать с теми же параметрами</td>
+                                <td>Да (1 генерация)</td>
+                            </tr>
+                            <tr>
+                                <td><code>🔍 Upscale</code></td>
+                                <td>Увеличение разрешения изображения</td>
+                                <td>Нет</td>
+                            </tr>
+                            <tr>
+                                <td><code>🎭 Variations</code></td>
+                                <td>Создание вариаций изображения</td>
+                                <td>Да (1 генерация)</td>
+                            </tr>
+                            <tr>
+                                <td><code>🖌️ Remove BG</code></td>
+                                <td>Удаление фона (PNG с прозрачностью)</td>
+                                <td>Нет</td>
+                            </tr>
+                            <tr>
+                                <td><code>👤 Face Restore</code></td>
+                                <td>Улучшение качества лиц</td>
+                                <td>Нет</td>
+                            </tr>
+                            <tr>
+                                <td><code>🎨 Inpaint</code></td>
+                                <td>Редактирование частей изображения</td>
+                                <td>Нет</td>
+                            </tr>
+                            <tr>
+                                <td><code>💾 Сохранить как пресет</code></td>
+                                <td>Сохранить параметры для повторного использования</td>
+                                <td>Нет</td>
+                            </tr>
+                            <tr>
+                                <td><code>➕ New image</code></td>
+                                <td>Начать создание нового изображения</td>
+                                <td>Нет</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><strong>Uspeshnyy Image Gen Bot</strong> - Powered by Stable Diffusion 3.5 & ChatGPT-4o</p>
+            <div class="footer-links">
+                <a href="https://tools.uspeshnyy.ru" class="footer-link">🛠️ Больше инструментов</a>
+                <a href="https://t.me/uspeshnyy" class="footer-link">💬 Поддержка</a>
+            </div>
+            <p style="margin-top: 15px; opacity: 0.7; font-size: 0.9em;">© 2025 Uspeshnyy Tools • AI Image Generation Bot</p>
+        </div>
+    </div>
+
+    <div class="scroll-top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+        ↑
+    </div>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(pip install:*)",
+      "Bash(python bot.py:*)",
+      "Bash(timeout /t 3 /nobreak)",
+      "Bash(curl -X POST https://imagegenbot.ircitru.workers.dev -H \"Content-Type: application/json\" -d \"{\"\"prompt\"\": \"\"test\"\"}\" --insecure)",
+      "Bash(python test_url.py:*)",
+      "Bash(python test_parse.py:*)",
+      "Bash(python test_parse2.py:*)",
+      "Bash(del test_url.py test_parse.py test_parse2.py)",
+      "Bash(python test_stability.py:*)",
+      "Bash(python test_style_transfer.py:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(python test_imports.py:*)",
+      "Bash(del test_imports.py)",
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

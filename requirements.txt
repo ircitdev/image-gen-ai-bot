@@ -1,0 +1,17 @@
+# Telegram Bot
+python-telegram-bot==20.8
+
+# Environment variables
+python-dotenv==1.0.0
+
+# HTTP requests
+requests==2.31.0
+
+# Image processing
+Pillow==10.2.0
+
+# Web scraping
+beautifulsoup4==4.12.3
+
+# OpenAI API
+openai==1.12.0
