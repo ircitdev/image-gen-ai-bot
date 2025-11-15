@@ -3,8 +3,10 @@ from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, In
 from io import BytesIO
 from state import user_state
 from utils import extract_text_from_url
-from keyboards import gpt_model_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb
+from keyboards import gpt_model_kb, image_engine_kb, dalle_model_kb, dalle_size_kb, dalle_quality_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb
 from dream_api import generate_dream
+from dalle_api import generate_with_dalle
+from dalle_gen_helper import generate_dalle_image
 from openai_helper import build_final_prompt, enhance_prompt_for_generation
 from style_transfer import apply_style_transfer
 from style_guide import generate_with_style_guide
@@ -1173,7 +1175,7 @@ Quality: {st['quality']}"""
 
     # Обычный текстовый запрос - сразу к выбору модели
     user_state[uid]["prompt"] = text
-    await update.message.reply_text("Выбери GPT модель для обработки промпта:", reply_markup=gpt_model_kb())
+    await update.message.reply_text("Выбери движок генерации изображений:", reply_markup=image_engine_kb())
 
 async def callbacks(update, context):
     query = update.callback_query
@@ -1192,6 +1194,46 @@ async def callbacks(update, context):
     # Обработка кнопки "Продолжить" для саммари URL
     if data == "continue_summary":
         await query.edit_message_text("Выбери модель:", reply_markup=model_kb())
+        return
+
+    # Обработка выбора движка генерации
+    if data.startswith("engine_"):
+        engine = data[7:]  # Убираем "engine_"
+        user_state[uid]["engine"] = engine
+
+        if engine == "sd":
+            # Stable Diffusion - показываем выбор GPT модели
+            await query.edit_message_text("Выбери GPT модель для обработки промпта:", reply_markup=gpt_model_kb())
+        elif engine == "dalle":
+            # DALL-E - показываем выбор модели DALL-E
+            await query.edit_message_text("Выбери модель DALL-E:", reply_markup=dalle_model_kb())
+        return
+
+    # Обработка выбора модели DALL-E
+    if data.startswith("dallemodel_"):
+        dalle_model = data[11:]  # Убираем "dallemodel_"
+        user_state[uid]["dalle_model"] = dalle_model
+        await query.edit_message_text(f"Выбери размер изображения:", reply_markup=dalle_size_kb(dalle_model))
+        return
+
+    # Обработка выбора размера DALL-E
+    if data.startswith("dallesize_"):
+        dalle_size = data[10:]  # Убираем "dallesize_"
+        user_state[uid]["dalle_size"] = dalle_size
+
+        # Если DALL-E 3, показываем выбор качества
+        if user_state[uid].get("dalle_model") == "dall-e-3":
+            await query.edit_message_text("Выбери качество:", reply_markup=dalle_quality_kb())
+        else:
+            # Для DALL-E 2 сразу генерируем
+            await generate_dalle_image(query, uid)
+        return
+
+    # Обработка выбора качества DALL-E 3
+    if data.startswith("dallequal_"):
+        dalle_quality = data[10:]  # Убираем "dallequal_"
+        user_state[uid]["dalle_quality"] = dalle_quality
+        await generate_dalle_image(query, uid)
         return
 
     # Обработка выбора GPT модели

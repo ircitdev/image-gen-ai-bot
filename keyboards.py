@@ -7,6 +7,42 @@ def gpt_model_kb():
         [InlineKeyboardButton("GPT-5 (Умнее 🧠)", callback_data="gptmodel_gpt-5")]
     ])
 
+def image_engine_kb():
+    """Клавиатура для выбора движка генерации изображений"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎨 Stable Diffusion 3.5", callback_data="engine_sd")],
+        [InlineKeyboardButton("🤖 DALL-E (ChatGPT)", callback_data="engine_dalle")]
+    ])
+
+def dalle_model_kb():
+    """Клавиатура для выбора модели DALL-E"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("DALL-E 3 (Лучшее качество)", callback_data="dallemodel_dall-e-3")],
+        [InlineKeyboardButton("DALL-E 2 (Быстрее)", callback_data="dallemodel_dall-e-2")]
+    ])
+
+def dalle_size_kb(model="dall-e-3"):
+    """Клавиатура для выбора размера DALL-E изображения"""
+    if model == "dall-e-3":
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("Квадрат 1024x1024", callback_data="dallesize_1024x1024")],
+            [InlineKeyboardButton("Портрет 1024x1792", callback_data="dallesize_1024x1792")],
+            [InlineKeyboardButton("Пейзаж 1792x1024", callback_data="dallesize_1792x1024")]
+        ])
+    else:  # dall-e-2
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("Маленький 256x256", callback_data="dallesize_256x256")],
+            [InlineKeyboardButton("Средний 512x512", callback_data="dallesize_512x512")],
+            [InlineKeyboardButton("Большой 1024x1024", callback_data="dallesize_1024x1024")]
+        ])
+
+def dalle_quality_kb():
+    """Клавиатура для выбора качества DALL-E 3"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Standard (Быстрее)", callback_data="dallequal_standard")],
+        [InlineKeyboardButton("HD (Лучше)", callback_data="dallequal_hd")]
+    ])
+
 def model_kb():
     """Клавиатура для выбора модели SD 3.5"""
     return InlineKeyboardMarkup([
