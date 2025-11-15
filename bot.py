@@ -3,7 +3,7 @@ from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, In
 from io import BytesIO
 from state import user_state
 from utils import extract_text_from_url
-from keyboards import model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb
+from keyboards import gpt_model_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb
 from dream_api import generate_dream
 from openai_helper import build_final_prompt, enhance_prompt_for_generation
 from style_transfer import apply_style_transfer
@@ -888,7 +888,8 @@ async def handle_message(update, context):
         await update.message.reply_text("⏳ Обработка промпта с помощью ChatGPT...")
 
         # Переводим новый промпт и генерируем
-        final_english_prompt = build_final_prompt(text, st["saved_params"])
+        gpt_model = user_state[uid].get("gpt_model", "gpt-4o")
+        final_english_prompt = build_final_prompt(text, st["saved_params"], gpt_model)
 
         await update.message.reply_text("⏳ Генерация изображения...")
         images = st["images"]
@@ -1172,7 +1173,7 @@ Quality: {st['quality']}"""
 
     # Обычный текстовый запрос - сразу к выбору модели
     user_state[uid]["prompt"] = text
-    await update.message.reply_text("Выбери модель:", reply_markup=model_kb())
+    await update.message.reply_text("Выбери GPT модель для обработки промпта:", reply_markup=gpt_model_kb())
 
 async def callbacks(update, context):
     query = update.callback_query
@@ -1191,6 +1192,12 @@ async def callbacks(update, context):
     # Обработка кнопки "Продолжить" для саммари URL
     if data == "continue_summary":
         await query.edit_message_text("Выбери модель:", reply_markup=model_kb())
+        return
+
+    # Обработка выбора GPT модели
+    if data.startswith("gptmodel_"):
+        user_state[uid]["gpt_model"] = data[9:]  # Убираем "gptmodel_"
+        await query.edit_message_text("Выбери модель SD 3.5:", reply_markup=model_kb())
         return
 
     # Обработка выбора модели
@@ -1328,7 +1335,8 @@ async def callbacks(update, context):
         user_state[uid]["saved_params"] = params.copy()
 
         # Переводим и формируем промпт для генерации
-        final_english_prompt = build_final_prompt(st['prompt'], params)
+        gpt_model = user_state[uid].get("gpt_model", "gpt-4o")
+        final_english_prompt = build_final_prompt(st['prompt'], params, gpt_model)
 
         # Определяем примерное время в зависимости от модели
         time_estimates = {
@@ -1424,7 +1432,8 @@ async def callbacks(update, context):
         varied_prompt = st["prompt"] + ", вариация, другая композиция"
 
         # Используем сохраненные параметры
-        final_english_prompt = build_final_prompt(varied_prompt, st["saved_params"])
+        gpt_model = user_state[uid].get("gpt_model", "gpt-4o")
+        final_english_prompt = build_final_prompt(varied_prompt, st["saved_params"], gpt_model)
 
         # Определяем примерное время
         time_estimates = {
@@ -1502,7 +1511,8 @@ async def callbacks(update, context):
         await query.edit_message_text("⏳ <b>Шаг 1/3:</b> Обработка промпта с помощью ChatGPT-4o...", parse_mode="HTML")
 
         # Используем те же параметры
-        final_english_prompt = build_final_prompt(st["prompt"], st["saved_params"])
+        gpt_model = user_state[uid].get("gpt_model", "gpt-4o")
+        final_english_prompt = build_final_prompt(st["prompt"], st["saved_params"], gpt_model)
 
         # Определяем примерное время
         time_estimates = {

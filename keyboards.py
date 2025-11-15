@@ -1,5 +1,12 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+def gpt_model_kb():
+    """Клавиатура для выбора GPT модели"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("GPT-4o (Быстрее ⚡)", callback_data="gptmodel_gpt-4o")],
+        [InlineKeyboardButton("GPT-5 (Умнее 🧠)", callback_data="gptmodel_gpt-5")]
+    ])
+
 def model_kb():
     """Клавиатура для выбора модели SD 3.5"""
     return InlineKeyboardMarkup([

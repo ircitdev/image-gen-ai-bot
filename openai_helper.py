@@ -11,13 +11,13 @@ from settings import OPENAI_API_KEY
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-def improve_prompt(text: str) -> str:
+def improve_prompt(text: str, model: str = "gpt-4o") -> str:
     """
     Улучшает промпт для генерации изображений с помощью ChatGPT-4o
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=model,
             messages=[
                 {
                     "role": "system",
@@ -47,13 +47,13 @@ def improve_prompt(text: str) -> str:
         return text  # Возвращаем оригинал при ошибке
 
 
-def translate_to_english(text: str) -> str:
+def translate_to_english(text: str, model: str = "gpt-4o") -> str:
     """
     Переводит текст на английский язык
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=model,
             messages=[
                 {
                     "role": "system",
@@ -93,7 +93,7 @@ def summarize_url_content(url: str, text_content: str) -> str:
         print(f"[INFO] Text length: {len(text_content)} characters")
 
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=model,
             messages=[
                 {
                     "role": "system",
@@ -125,7 +125,7 @@ def summarize_url_content(url: str, text_content: str) -> str:
         return f"Создай обложку для этой статьи"  # Fallback на русском
 
 
-def build_final_prompt(base_prompt: str, params: dict) -> str:
+def build_final_prompt(base_prompt: str, params: dict, model: str = "gpt-4o") -> str:
     """
     Создает финальный промпт для генерации на английском с учетом параметров
 
@@ -140,7 +140,7 @@ def build_final_prompt(base_prompt: str, params: dict) -> str:
     """
     # Переводим ТОЛЬКО основной текст на английский
     print(f"[INFO] Translating base prompt to English...")
-    english_prompt = translate_to_english(base_prompt)
+    english_prompt = translate_to_english(base_prompt, model)
 
     # Style передается через API параметры (style_preset)
     # Модель и формат также передаются отдельно
