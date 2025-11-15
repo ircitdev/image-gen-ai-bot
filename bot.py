@@ -3,7 +3,7 @@ from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, In
 from io import BytesIO
 from state import user_state
 from utils import extract_text_from_url
-from keyboards import model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb
+from keyboards import model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb
 from dream_api import generate_dream
 from openai_helper import build_final_prompt, enhance_prompt_for_generation
 from style_transfer import apply_style_transfer
@@ -14,7 +14,7 @@ from image_library import add_to_history, get_user_history, get_favorites, toggl
 from presets import create_preset, get_user_presets, get_preset, delete_preset
 from watermark import add_watermark
 from payments import get_all_packages_message, format_package_message, create_cryptobot_invoice, get_package_info, PACKAGES
-from ai_tools import upscale_image, remove_background, create_variations, inpaint_image, restore_face
+from ai_tools import upscale_image, remove_background, create_variations, inpaint_image, restore_face, outpaint_image, search_and_recolor, search_and_replace, erase_object
 from settings import TELEGRAM_BOT_TOKEN
 
 # ID администратора
@@ -27,6 +27,7 @@ async def setup_commands(application):
     user_commands = [
         BotCommand("start", "Начать работу с ботом"),
         BotCommand("new", "Создать новое изображение"),
+        BotCommand("editmy", "Редактировать мое изображение"),
         BotCommand("styletransfer", "Перенос стиля между изображениями"),
         BotCommand("styleguide", "Генерация по стилю референса"),
         BotCommand("sketch", "Генерация из наброска"),
@@ -99,6 +100,25 @@ async def new_image(update, context):
     uid = update.effective_user.id
     user_state.pop(uid, None)
     await update.message.reply_text("🆕 Готов к созданию нового изображения!\n\nПришли текст, ссылку или фото с описанием.")
+
+async def editmy_command(update, context):
+    """Команда /editmy - редактировать загруженное изображение"""
+    uid = update.effective_user.id
+    user_state[uid] = {"mode": "editmy"}
+    await update.message.reply_text(
+        "🖼️ <b>Редактирование изображения</b>\n\n"
+        "Загрузите изображение, которое хотите отредактировать.\n\n"
+        "Доступные операции:\n"
+        "• 🔍 Upscale - увеличение разрешения\n"
+        "• 🖌️ Remove BG - удаление фона\n"
+        "• 👤 Face Restore - улучшение лиц\n"
+        "• 🎨 Inpaint - редактирование частей\n"
+        "• 🖼️ Outpaint - расширение изображения\n"
+        "• 🎨 Search & Recolor - поиск и перекраска\n"
+        "• 🔄 Search & Replace - поиск и замена\n"
+        "• 🗑️ Erase - удаление объектов",
+        parse_mode="HTML"
+    )
 
 async def help_command(update, context):
     """Команда /help - открыть полную справку в Mini App"""
@@ -417,6 +437,26 @@ async def sketch_command(update, context):
 async def handle_message(update, context):
     uid = update.effective_user.id
 
+    # Проверяем режим /editmy
+    if user_state.get(uid, {}).get("mode") == "editmy" and update.message.photo:
+        # Загружаем фото
+        file = await update.message.photo[-1].get_file()
+        photo_bytes = await file.download_as_bytearray()
+        photo_io = BytesIO(photo_bytes)
+        photo_io.seek(0)
+
+        # Сохраняем изображение в состоянии
+        user_state[uid]["edit_image"] = photo_io
+        user_state[uid]["mode"] = None
+
+        # Показываем кнопки действий
+        await update.message.reply_text(
+            "✅ Изображение загружено!\n\n"
+            "Выберите операцию для редактирования:",
+            reply_markup=edit_actions_kb()
+        )
+        return
+
     # Проверяем, активен ли процесс Style Transfer
     if user_state[uid].get("style_transfer", {}).get("active"):
         st_state = user_state[uid]["style_transfer"]
@@ -568,6 +608,9 @@ async def handle_message(update, context):
 
         # Обработка текстовых параметров
         if sg_state["step"] == "prompt":
+            if not update.message.text:
+                await update.message.reply_text("❌ Отправьте текстовое сообщение с промптом!")
+                return
             text = update.message.text.strip()
             if not text or text == "-":
                 await update.message.reply_text("❌ Prompt обязателен для Style Guide!")
@@ -575,25 +618,30 @@ async def handle_message(update, context):
             sg_state["prompt"] = text
             sg_state["step"] = "negative_prompt"
             await update.message.reply_text(
-                "<b>Negative Prompt</b> (что исключить, можно оставить пустым):\n"
-                "Отправьте текст или '-' для пропуска.",
-                parse_mode="HTML"
+                "<b>Negative Prompt</b> (что исключить, можно оставить пустым):",
+                parse_mode="HTML",
+                reply_markup=skip_kb()
             )
             return
 
         if sg_state["step"] == "negative_prompt":
+            if not update.message.text:
+                await update.message.reply_text("❌ Отправьте текстовое сообщение или '-' для пропуска!")
+                return
             text = update.message.text.strip()
             sg_state["negative_prompt"] = "" if text == "-" else text
             sg_state["step"] = "aspect_ratio"
             await update.message.reply_text(
-                "<b>Aspect Ratio</b> (формат изображения):\n"
-                "Введите один из: 1:1, 21:9, 16:9, 3:2, 5:4, 4:5, 2:3, 9:16, 9:21\n"
-                "Пример: 1:1",
-                parse_mode="HTML"
+                "<b>Aspect Ratio</b> (формат изображения):",
+                parse_mode="HTML",
+                reply_markup=aspect_ratio_kb()
             )
             return
 
         if sg_state["step"] == "aspect_ratio":
+            if not update.message.text:
+                await update.message.reply_text("❌ Отправьте текстовое сообщение с форматом!")
+                return
             text = update.message.text.strip()
             valid_ratios = ["1:1", "21:9", "16:9", "3:2", "5:4", "4:5", "2:3", "9:16", "9:21"]
             if text in valid_ratios:
@@ -601,8 +649,9 @@ async def handle_message(update, context):
                 sg_state["step"] = "fidelity"
                 await update.message.reply_text(
                     "<b>Fidelity</b> (точность следования стилю, 0.1-1.0):\n"
-                    "Пример: 0.5",
-                    parse_mode="HTML"
+                    "Выберите или введите свое значение",
+                    parse_mode="HTML",
+                    reply_markup=fidelity_kb()
                 )
                 return
             else:
@@ -610,6 +659,9 @@ async def handle_message(update, context):
                 return
 
         if sg_state["step"] == "fidelity":
+            if not update.message.text:
+                await update.message.reply_text("❌ Отправьте число от 0.1 до 1.0!")
+                return
             try:
                 value = float(update.message.text.strip())
                 if 0.1 <= value <= 1.0:
@@ -633,7 +685,21 @@ async def handle_message(update, context):
                         # Успех - отправляем изображение с watermark
                         watermarked_image = add_watermark(result)
                         await context.bot.send_photo(uid, watermarked_image)
-                        await context.bot.send_message(uid, "✅ Style Guide генерация завершена!")
+
+                        # Сохраняем параметры для возможности повторной генерации
+                        user_state[uid]["last_sg_params"] = {
+                            "style_image": sg_state["style_image"],
+                            "prompt": sg_state["prompt"],
+                            "negative_prompt": sg_state.get("negative_prompt", ""),
+                            "aspect_ratio": sg_state.get("aspect_ratio", "1:1"),
+                            "fidelity": sg_state.get("fidelity", 0.5)
+                        }
+
+                        await context.bot.send_message(
+                            uid,
+                            "✅ Style Guide генерация завершена!",
+                            reply_markup=style_guide_regenerate_kb()
+                        )
 
                     # Очищаем состояние
                     user_state[uid]["style_guide"] = {"active": False}
@@ -664,6 +730,9 @@ async def handle_message(update, context):
 
         # Обработка текстовых параметров
         if sk_state["step"] == "prompt":
+            if not update.message.text:
+                await update.message.reply_text("❌ Отправьте текстовое сообщение с промптом!")
+                return
             text = update.message.text.strip()
             if not text or text == "-":
                 await update.message.reply_text("❌ Prompt обязателен для Sketch!")
@@ -678,6 +747,9 @@ async def handle_message(update, context):
             return
 
         if sk_state["step"] == "negative_prompt":
+            if not update.message.text:
+                await update.message.reply_text("❌ Отправьте текстовое сообщение или '-' для пропуска!")
+                return
             text = update.message.text.strip()
             sk_state["negative_prompt"] = "" if text == "-" else text
             sk_state["step"] = "control_strength"
@@ -689,6 +761,9 @@ async def handle_message(update, context):
             return
 
         if sk_state["step"] == "control_strength":
+            if not update.message.text:
+                await update.message.reply_text("❌ Отправьте число от 0.1 до 1.0!")
+                return
             try:
                 value = float(update.message.text.strip())
                 if 0.1 <= value <= 1.0:
@@ -931,6 +1006,93 @@ Quality: {st['quality']}"""
         )
         return
 
+    # Обработка Search & Recolor - шаг 1 (search)
+    if user_state[uid].get("awaiting_search_recolor_search"):
+        user_state[uid]["awaiting_search_recolor_search"] = False
+        user_state[uid]["search_recolor_search"] = text
+        user_state[uid]["awaiting_search_recolor_color"] = True
+        await update.message.reply_text(
+            "🎨 <b>Search & Recolor</b>\n\n"
+            "Шаг 2/2: Опишите новый цвет/стиль для найденного объекта.\n\n"
+            "Например: 'синий', 'золотой металлик', 'радужный'",
+            parse_mode="HTML"
+        )
+        return
+
+    # Обработка Search & Recolor - шаг 2 (color)
+    if user_state[uid].get("awaiting_search_recolor_color"):
+        user_state[uid]["awaiting_search_recolor_color"] = False
+        recolor_prompt = text
+        search_prompt = user_state[uid].get("search_recolor_search")
+
+        if not user_state.get(uid, {}).get("edit_image"):
+            await update.message.reply_text("❌ Изображение потеряно. Загрузите заново через /editmy")
+            return
+
+        await update.message.reply_text(f"⏳ <b>Search & Recolor...</b>\n\n🎨 Ищем '{search_prompt}' и перекрашиваем в '{recolor_prompt}'...", parse_mode="HTML")
+
+        result = search_and_recolor(user_state[uid]["edit_image"], search_prompt, recolor_prompt)
+
+        if isinstance(result, str):
+            await update.message.reply_text(result)
+        else:
+            watermarked = add_watermark(result)
+            await context.bot.send_photo(uid, watermarked, caption="✅ Объект перекрашен!")
+        return
+
+    # Обработка Search & Replace - шаг 1 (search)
+    if user_state[uid].get("awaiting_search_replace_search"):
+        user_state[uid]["awaiting_search_replace_search"] = False
+        user_state[uid]["search_replace_search"] = text
+        user_state[uid]["awaiting_search_replace_replace"] = True
+        await update.message.reply_text(
+            "🔄 <b>Search & Replace</b>\n\n"
+            "Шаг 2/2: Опишите, чем заменить найденный объект.\n\n"
+            "Например: 'собака', 'цветок', 'спортивная машина'",
+            parse_mode="HTML"
+        )
+        return
+
+    # Обработка Search & Replace - шаг 2 (replace)
+    if user_state[uid].get("awaiting_search_replace_replace"):
+        user_state[uid]["awaiting_search_replace_replace"] = False
+        replace_prompt = text
+        search_prompt = user_state[uid].get("search_replace_search")
+
+        if not user_state.get(uid, {}).get("edit_image"):
+            await update.message.reply_text("❌ Изображение потеряно. Загрузите заново через /editmy")
+            return
+
+        await update.message.reply_text(f"⏳ <b>Search & Replace...</b>\n\n🔄 Заменяем '{search_prompt}' на '{replace_prompt}'...", parse_mode="HTML")
+
+        result = search_and_replace(user_state[uid]["edit_image"], search_prompt, replace_prompt)
+
+        if isinstance(result, str):
+            await update.message.reply_text(result)
+        else:
+            watermarked = add_watermark(result)
+            await context.bot.send_photo(uid, watermarked, caption="✅ Объект заменен!")
+        return
+
+    # Обработка Erase
+    if user_state[uid].get("awaiting_erase_prompt"):
+        user_state[uid]["awaiting_erase_prompt"] = False
+
+        if not user_state.get(uid, {}).get("edit_image"):
+            await update.message.reply_text("❌ Изображение потеряно. Загрузите заново через /editmy")
+            return
+
+        await update.message.reply_text(f"⏳ <b>Erase...</b>\n\n🗑️ Удаляем '{text}'...", parse_mode="HTML")
+
+        result = erase_object(user_state[uid]["edit_image"], text)
+
+        if isinstance(result, str):
+            await update.message.reply_text(result)
+        else:
+            watermarked = add_watermark(result)
+            await context.bot.send_photo(uid, watermarked, caption="✅ Объект удален!")
+        return
+
     # Проверяем, сохраняет ли пользователь пресет
     if user_state[uid].get("awaiting_preset_name"):
         user_state[uid]["awaiting_preset_name"] = False
@@ -1112,7 +1274,13 @@ async def callbacks(update, context):
 
     if data.startswith("fmt_"):
         user_state[uid]["format"] = data[4:]
-        user_state[uid]["style"] = "none"  # По умолчанию без стиля
+
+        # Показываем выбор стиля
+        await query.edit_message_text("🎨 Выбери стиль:", reply_markup=style_kb())
+        return
+
+    if data.startswith("style_"):
+        user_state[uid]["style"] = data[6:]
 
         # Предлагаем добавить negative prompt
         await query.edit_message_text(
@@ -1121,65 +1289,6 @@ async def callbacks(update, context):
             "<i>Например: blurry, low quality, distorted, ugly</i>",
             reply_markup=negative_prompt_kb(),
             parse_mode="HTML"
-        )
-        return
-
-    if data.startswith("style_"):
-        user_state[uid]["style"] = data[6:]
-
-        st = user_state[uid]
-
-        # Переводим параметры на русский для отображения
-        format_ru = {
-            "1:1": "1:1 (квадрат)",
-            "21:9": "21:9 (ультра-широкий)",
-            "16:9": "16:9 (горизонтально)",
-            "3:2": "3:2",
-            "5:4": "5:4",
-            "4:5": "4:5",
-            "2:3": "2:3",
-            "9:16": "9:16 (вертикально)",
-            "9:21": "9:21 (ультра-вертикально)"
-        }
-
-        model_ru = {
-            "sd3.5-large": "SD 3.5 Large",
-            "sd3.5-large-turbo": "SD 3.5 Large Turbo",
-            "sd3.5-medium": "SD 3.5 Medium",
-            "sd3.5-flash": "SD 3.5 Flash"
-        }
-
-        style_ru = {
-            "none": "None",
-            "3d-model": "3D Model",
-            "analog-film": "Analog Film",
-            "anime": "Anime",
-            "cinematic": "Cinematic",
-            "comic-book": "Comic Book",
-            "digital-art": "Digital Art",
-            "enhance": "Enhance",
-            "fantasy-art": "Fantasy Art",
-            "isometric": "Isometric",
-            "line-art": "Line Art",
-            "low-poly": "Low Poly",
-            "modeling-compound": "Modeling Compound",
-            "neon-punk": "Neon Punk",
-            "origami": "Origami",
-            "photographic": "Photographic",
-            "pixel-art": "Pixel Art",
-            "tile-texture": "Tile Texture"
-        }
-
-        final_prompt_ru = f"""{st['prompt']}
-
-Модель: {model_ru.get(st['model'], st['model'])}
-Формат: {format_ru.get(st['format'], st['format'])}
-Стиль: {style_ru.get(st['style'], st['style'])}"""
-
-        # Показываем финальный промпт на русском с кнопками подтверждения
-        await query.edit_message_text(
-            f"📝 Финальный промпт:\n\n{final_prompt_ru}",
-            reply_markup=confirm_kb()
         )
         return
 
@@ -2066,6 +2175,220 @@ async def callbacks(update, context):
         await library_command(update, context)
         return
 
+    # Обработчики для /editmy кнопок
+    if data == "edit_reference":
+        if not user_state.get(uid, {}).get("edit_image"):
+            await query.answer("❌ Нет загруженного изображения", show_alert=True)
+            return
+
+        # Сохраняем как референс для следующей генерации
+        user_state[uid]["images"] = [user_state[uid]["edit_image"]]
+        await query.answer("✅ Изображение сохранено как референс!")
+        await query.edit_message_text("✅ Изображение сохранено как референс для следующей генерации!")
+        return
+
+    if data == "edit_upscale":
+        if not user_state.get(uid, {}).get("edit_image"):
+            await query.answer("❌ Нет загруженного изображения", show_alert=True)
+            return
+
+        await query.edit_message_text("⏳ <b>Upscale...</b>\n\n🔍 Увеличиваем разрешение изображения...", parse_mode="HTML")
+
+        result = upscale_image(user_state[uid]["edit_image"])
+
+        if isinstance(result, str):
+            await query.edit_message_text(result)
+        else:
+            watermarked = add_watermark(result)
+            await context.bot.send_photo(uid, watermarked, caption="✅ Upscale завершен!")
+            await query.message.delete()
+        return
+
+    if data == "edit_remove_bg":
+        if not user_state.get(uid, {}).get("edit_image"):
+            await query.answer("❌ Нет загруженного изображения", show_alert=True)
+            return
+
+        await query.edit_message_text("⏳ <b>Remove Background...</b>\n\n🖌️ Удаляем фон...", parse_mode="HTML")
+
+        result = remove_background(user_state[uid]["edit_image"])
+
+        if isinstance(result, str):
+            await query.edit_message_text(result)
+        else:
+            await context.bot.send_photo(uid, result, caption="✅ Фон удален!")
+            await query.message.delete()
+        return
+
+    if data == "edit_face_restore":
+        if not user_state.get(uid, {}).get("edit_image"):
+            await query.answer("❌ Нет загруженного изображения", show_alert=True)
+            return
+
+        await query.edit_message_text("⏳ <b>Face Restore...</b>\n\n👤 Улучшаем качество лиц...", parse_mode="HTML")
+
+        result = restore_face(user_state[uid]["edit_image"])
+
+        if isinstance(result, str):
+            await query.edit_message_text(result)
+        else:
+            watermarked = add_watermark(result)
+            await context.bot.send_photo(uid, watermarked, caption="✅ Лица улучшены!")
+            await query.message.delete()
+        return
+
+    if data == "edit_inpaint":
+        await query.answer("⚠️ Inpaint требует маску. Используйте action_inpaint после генерации.", show_alert=True)
+        return
+
+    if data == "edit_outpaint":
+        if not user_state.get(uid, {}).get("edit_image"):
+            await query.answer("❌ Нет загруженного изображения", show_alert=True)
+            return
+
+        await query.edit_message_text("⏳ <b>Outpaint...</b>\n\n🖼️ Расширяем изображение (200px во все стороны)...", parse_mode="HTML")
+
+        result = outpaint_image(user_state[uid]["edit_image"], left=200, right=200, up=200, down=200)
+
+        if isinstance(result, str):
+            await query.edit_message_text(result)
+        else:
+            watermarked = add_watermark(result)
+            await context.bot.send_photo(uid, watermarked, caption="✅ Изображение расширено!")
+            await query.message.delete()
+        return
+
+    if data == "edit_search_recolor":
+        user_state[uid]["awaiting_search_recolor_search"] = True
+        await query.edit_message_text(
+            "🎨 <b>Search & Recolor</b>\n\n"
+            "Шаг 1/2: Опишите объект, который нужно найти и перекрасить.\n\n"
+            "Например: 'красное платье', 'синяя машина', 'зеленое дерево'",
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "edit_search_replace":
+        user_state[uid]["awaiting_search_replace_search"] = True
+        await query.edit_message_text(
+            "🔄 <b>Search & Replace</b>\n\n"
+            "Шаг 1/2: Опишите объект, который нужно найти и заменить.\n\n"
+            "Например: 'кошка', 'дерево', 'машина'",
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "edit_erase":
+        user_state[uid]["awaiting_erase_prompt"] = True
+        await query.edit_message_text(
+            "🗑️ <b>Erase Object</b>\n\n"
+            "Опишите объект, который нужно удалить с изображения.\n\n"
+            "Например: 'человек слева', 'провода', 'мусор на земле'",
+            parse_mode="HTML"
+        )
+        return
+
+    # Обработка кнопки "Пропустить" для negative prompt в style guide
+    if data == "skip":
+        if user_state[uid].get("style_guide", {}).get("active"):
+            sg_state = user_state[uid]["style_guide"]
+            if sg_state["step"] == "negative_prompt":
+                sg_state["negative_prompt"] = ""
+                sg_state["step"] = "aspect_ratio"
+                await query.edit_message_text(
+                    "<b>Aspect Ratio</b> (формат изображения):",
+                    parse_mode="HTML",
+                    reply_markup=aspect_ratio_kb()
+                )
+        return
+
+    # Обработка выбора aspect ratio
+    if data.startswith("ar_"):
+        if user_state[uid].get("style_guide", {}).get("active"):
+            sg_state = user_state[uid]["style_guide"]
+            sg_state["aspect_ratio"] = data[3:]  # Убираем "ar_"
+            sg_state["step"] = "fidelity"
+            await query.edit_message_text(
+                "<b>Fidelity</b> (точность следования стилю, 0.1-1.0):\n"
+                "Выберите или введите свое значение",
+                parse_mode="HTML",
+                reply_markup=fidelity_kb()
+            )
+        return
+
+    # Обработка выбора fidelity
+    if data.startswith("fid_"):
+        if user_state[uid].get("style_guide", {}).get("active"):
+            sg_state = user_state[uid]["style_guide"]
+            fidelity_value = float(data[4:])  # Убираем "fid_"
+            sg_state["fidelity"] = fidelity_value
+
+            # Все параметры собраны, запускаем генерацию
+            await query.edit_message_text("⏳ Генерация изображения в стиле референса...")
+
+            result = generate_with_style_guide(
+                image_path=sg_state["style_image"],
+                prompt=sg_state["prompt"],
+                negative_prompt=sg_state.get("negative_prompt", ""),
+                aspect_ratio=sg_state.get("aspect_ratio", "1:1"),
+                fidelity=fidelity_value
+            )
+
+            if isinstance(result, str):
+                # Ошибка
+                await context.bot.send_message(uid, f"❌ {result}")
+            else:
+                # Успех - отправляем изображение с watermark
+                watermarked_image = add_watermark(result)
+                await context.bot.send_photo(uid, watermarked_image)
+
+                # Сохраняем параметры для возможности повторной генерации
+                user_state[uid]["last_sg_params"] = {
+                    "style_image": sg_state["style_image"],
+                    "prompt": sg_state["prompt"],
+                    "negative_prompt": sg_state.get("negative_prompt", ""),
+                    "aspect_ratio": sg_state.get("aspect_ratio", "1:1"),
+                    "fidelity": fidelity_value
+                }
+
+                await context.bot.send_message(
+                    uid,
+                    "✅ Style Guide генерация завершена!",
+                    reply_markup=style_guide_regenerate_kb()
+                )
+
+            # Очищаем состояние
+            user_state[uid]["style_guide"] = {"active": False}
+        return
+
+    # Обработка кнопки "Новая генерация в этом стиле"
+    if data == "sg_regenerate":
+        if "last_sg_params" in user_state[uid]:
+            params = user_state[uid]["last_sg_params"]
+            await query.edit_message_text("⏳ Генерация нового изображения в этом стиле...")
+
+            result = generate_with_style_guide(
+                image_path=params["style_image"],
+                prompt=params["prompt"],
+                negative_prompt=params.get("negative_prompt", ""),
+                aspect_ratio=params.get("aspect_ratio", "1:1"),
+                fidelity=params.get("fidelity", 0.5)
+            )
+
+            if isinstance(result, str):
+                # Ошибка
+                await context.bot.send_message(uid, f"❌ {result}")
+            else:
+                # Успех - отправляем изображение с watermark
+                watermarked_image = add_watermark(result)
+                await context.bot.send_photo(uid, watermarked_image)
+                await context.bot.send_message(
+                    uid,
+                    "✅ Style Guide генерация завершена!",
+                    reply_markup=style_guide_regenerate_kb()
+                )
+        return
+
 async def precheckout_callback(update, context):
     """Обработка pre-checkout для Telegram Stars"""
     query = update.pre_checkout_query
@@ -2185,6 +2508,7 @@ def main():
     # Регистрируем обработчики команд
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("new", new_image))
+    app.add_handler(CommandHandler("editmy", editmy_command))
     app.add_handler(CommandHandler("styletransfer", style_transfer_command))
     app.add_handler(CommandHandler("styleguide", style_guide_command))
     app.add_handler(CommandHandler("sketch", sketch_command))

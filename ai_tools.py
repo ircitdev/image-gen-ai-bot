@@ -9,6 +9,7 @@
 import requests
 from io import BytesIO
 from settings import STABILITY_API_KEY
+from openai_helper import translate_to_english
 
 
 def upscale_image(image_input, scale_factor=2):
@@ -158,9 +159,16 @@ def create_variations(image_input, prompt="", num_variations=1):
             "image": ("image.png", image_bytes, "image/png")
         }
 
+        # Переводим промпт на английский, если он есть
+        english_prompt = prompt if prompt else "variation of this image, slightly different"
+        if prompt:
+            print(f"[INFO] Translating prompt: {prompt}")
+            english_prompt = translate_to_english(prompt)
+            print(f"[OK] Translated prompt: {english_prompt}")
+
         # Используем низкий strength для создания вариаций
         data = {
-            "prompt": prompt if prompt else "variation of this image, slightly different",
+            "prompt": english_prompt,
             "mode": "image-to-image",
             "strength": 0.5,  # 0.5 для умеренных изменений
             "output_format": "png",
@@ -230,8 +238,15 @@ def inpaint_image(image_input, mask_input, prompt=""):
             "mask": ("mask.png", mask_bytes, "image/png")
         }
 
+        # Переводим промпт на английский, если он есть
+        english_prompt = prompt if prompt else "improve and enhance the masked area"
+        if prompt:
+            print(f"[INFO] Translating inpaint prompt: {prompt}")
+            english_prompt = translate_to_english(prompt)
+            print(f"[OK] Translated prompt: {english_prompt}")
+
         data = {
-            "prompt": prompt if prompt else "improve and enhance the masked area",
+            "prompt": english_prompt,
             "output_format": "png"
         }
 
@@ -310,5 +325,272 @@ def restore_face(image_input):
 
     except Exception as e:
         error_msg = f"Face restore exception: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        return f"❌ Ошибка: {str(e)}"
+
+
+def outpaint_image(image_input, prompt="", left=0, right=0, up=0, down=0):
+    """
+    Расширяет изображение за его границы
+
+    Args:
+        image_input: BytesIO объект или путь к файлу
+        prompt: описание для генерации расширенных областей
+        left, right, up, down: количество пикселей для расширения в каждом направлении (0-2000)
+
+    Returns:
+        BytesIO с расширенным изображением или строку с ошибкой
+    """
+    try:
+        # Подготовка файла
+        if isinstance(image_input, str):
+            with open(image_input, 'rb') as f:
+                image_bytes = f.read()
+        else:
+            image_input.seek(0)
+            image_bytes = image_input.read()
+
+        # Переводим промпт на английский, если он есть
+        english_prompt = prompt if prompt else "extend the image naturally"
+        if prompt:
+            print(f"[INFO] Translating outpaint prompt: {prompt}")
+            english_prompt = translate_to_english(prompt)
+            print(f"[OK] Translated prompt: {english_prompt}")
+
+        api_url = "https://api.stability.ai/v2beta/stable-image/edit/outpaint"
+
+        headers = {
+            "authorization": f"Bearer {STABILITY_API_KEY}",
+            "accept": "image/*"
+        }
+
+        files = {
+            "image": ("image.png", image_bytes, "image/png")
+        }
+
+        data = {
+            "prompt": english_prompt,
+            "left": left,
+            "right": right,
+            "up": up,
+            "down": down,
+            "output_format": "png"
+        }
+
+        print(f"[INFO] Outpainting image (L:{left}, R:{right}, U:{up}, D:{down})...")
+
+        response = requests.post(api_url, headers=headers, files=files, data=data)
+
+        if response.status_code == 200:
+            result = BytesIO(response.content)
+            result.seek(0)
+            print("[INFO] Outpaint successful")
+            return result
+        else:
+            error_msg = f"Outpaint error: {response.status_code}"
+            print(f"[ERROR] {error_msg}")
+            print(f"[ERROR] Response: {response.text}")
+            return f"❌ Ошибка outpaint: {response.status_code}"
+
+    except Exception as e:
+        error_msg = f"Outpaint exception: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        return f"❌ Ошибка: {str(e)}"
+
+
+def search_and_recolor(image_input, search_prompt, recolor_prompt):
+    """
+    Находит объект и перекрашивает его
+
+    Args:
+        image_input: BytesIO объект или путь к файлу
+        search_prompt: описание объекта для поиска
+        recolor_prompt: описание нового цвета/стиля
+
+    Returns:
+        BytesIO с перекрашенным изображением или строку с ошибкой
+    """
+    try:
+        # Подготовка файла
+        if isinstance(image_input, str):
+            with open(image_input, 'rb') as f:
+                image_bytes = f.read()
+        else:
+            image_input.seek(0)
+            image_bytes = image_input.read()
+
+        # Переводим промпты на английский
+        print(f"[INFO] Translating search prompt: {search_prompt}")
+        english_search = translate_to_english(search_prompt)
+        print(f"[OK] Translated search: {english_search}")
+
+        print(f"[INFO] Translating recolor prompt: {recolor_prompt}")
+        english_recolor = translate_to_english(recolor_prompt)
+        print(f"[OK] Translated recolor: {english_recolor}")
+
+        api_url = "https://api.stability.ai/v2beta/stable-image/edit/search-and-recolor"
+
+        headers = {
+            "authorization": f"Bearer {STABILITY_API_KEY}",
+            "accept": "image/*"
+        }
+
+        files = {
+            "image": ("image.png", image_bytes, "image/png")
+        }
+
+        data = {
+            "prompt": english_recolor,
+            "select_prompt": english_search,
+            "output_format": "png"
+        }
+
+        print(f"[INFO] Search and recolor: '{english_search}' -> '{english_recolor}'...")
+
+        response = requests.post(api_url, headers=headers, files=files, data=data)
+
+        if response.status_code == 200:
+            result = BytesIO(response.content)
+            result.seek(0)
+            print("[INFO] Search and recolor successful")
+            return result
+        else:
+            error_msg = f"Search and recolor error: {response.status_code}"
+            print(f"[ERROR] {error_msg}")
+            print(f"[ERROR] Response: {response.text}")
+            return f"❌ Ошибка перекраски: {response.status_code}"
+
+    except Exception as e:
+        error_msg = f"Search and recolor exception: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        return f"❌ Ошибка: {str(e)}"
+
+
+def search_and_replace(image_input, search_prompt, replace_prompt):
+    """
+    Находит объект и заменяет его на другой
+
+    Args:
+        image_input: BytesIO объект или путь к файлу
+        search_prompt: описание объекта для поиска
+        replace_prompt: описание объекта для замены
+
+    Returns:
+        BytesIO с измененным изображением или строку с ошибкой
+    """
+    try:
+        # Подготовка файла
+        if isinstance(image_input, str):
+            with open(image_input, 'rb') as f:
+                image_bytes = f.read()
+        else:
+            image_input.seek(0)
+            image_bytes = image_input.read()
+
+        # Переводим промпты на английский
+        print(f"[INFO] Translating search prompt: {search_prompt}")
+        english_search = translate_to_english(search_prompt)
+        print(f"[OK] Translated search: {english_search}")
+
+        print(f"[INFO] Translating replace prompt: {replace_prompt}")
+        english_replace = translate_to_english(replace_prompt)
+        print(f"[OK] Translated replace: {english_replace}")
+
+        api_url = "https://api.stability.ai/v2beta/stable-image/edit/search-and-replace"
+
+        headers = {
+            "authorization": f"Bearer {STABILITY_API_KEY}",
+            "accept": "image/*"
+        }
+
+        files = {
+            "image": ("image.png", image_bytes, "image/png")
+        }
+
+        data = {
+            "prompt": english_replace,
+            "search_prompt": english_search,
+            "output_format": "png"
+        }
+
+        print(f"[INFO] Search and replace: '{english_search}' -> '{english_replace}'...")
+
+        response = requests.post(api_url, headers=headers, files=files, data=data)
+
+        if response.status_code == 200:
+            result = BytesIO(response.content)
+            result.seek(0)
+            print("[INFO] Search and replace successful")
+            return result
+        else:
+            error_msg = f"Search and replace error: {response.status_code}"
+            print(f"[ERROR] {error_msg}")
+            print(f"[ERROR] Response: {response.text}")
+            return f"❌ Ошибка замены: {response.status_code}"
+
+    except Exception as e:
+        error_msg = f"Search and replace exception: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        return f"❌ Ошибка: {str(e)}"
+
+
+def erase_object(image_input, search_prompt):
+    """
+    Находит и удаляет объект с изображения
+
+    Args:
+        image_input: BytesIO объект или путь к файлу
+        search_prompt: описание объекта для удаления
+
+    Returns:
+        BytesIO с изображением без объекта или строку с ошибкой
+    """
+    try:
+        # Подготовка файла
+        if isinstance(image_input, str):
+            with open(image_input, 'rb') as f:
+                image_bytes = f.read()
+        else:
+            image_input.seek(0)
+            image_bytes = image_input.read()
+
+        # Переводим промпт на английский
+        print(f"[INFO] Translating erase prompt: {search_prompt}")
+        english_search = translate_to_english(search_prompt)
+        print(f"[OK] Translated prompt: {english_search}")
+
+        api_url = "https://api.stability.ai/v2beta/stable-image/edit/erase"
+
+        headers = {
+            "authorization": f"Bearer {STABILITY_API_KEY}",
+            "accept": "image/*"
+        }
+
+        files = {
+            "image": ("image.png", image_bytes, "image/png")
+        }
+
+        data = {
+            "search_prompt": english_search,
+            "output_format": "png"
+        }
+
+        print(f"[INFO] Erasing object: '{english_search}'...")
+
+        response = requests.post(api_url, headers=headers, files=files, data=data)
+
+        if response.status_code == 200:
+            result = BytesIO(response.content)
+            result.seek(0)
+            print("[INFO] Erase successful")
+            return result
+        else:
+            error_msg = f"Erase error: {response.status_code}"
+            print(f"[ERROR] {error_msg}")
+            print(f"[ERROR] Response: {response.text}")
+            return f"❌ Ошибка удаления: {response.status_code}"
+
+    except Exception as e:
+        error_msg = f"Erase exception: {str(e)}"
         print(f"[ERROR] {error_msg}")
         return f"❌ Ошибка: {str(e)}"

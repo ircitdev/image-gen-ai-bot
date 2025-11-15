@@ -22,14 +22,18 @@ def add_watermark(image_bytes, watermark_path=WATERMARK_PATH, offset=WATERMARK_O
         BytesIO объект с изображением с watermark
     """
     try:
+        print(f"[INFO] Adding watermark from {watermark_path}")
+
         # Загружаем основное изображение
         if isinstance(image_bytes, str):
             # Если передан путь к файлу
             base_image = Image.open(image_bytes)
+            print(f"[INFO] Loaded base image from file")
         else:
             # Если передан BytesIO
             image_bytes.seek(0)
             base_image = Image.open(image_bytes)
+            print(f"[INFO] Loaded base image from BytesIO")
 
         # Конвертируем в RGBA если нужно
         if base_image.mode != 'RGBA':
@@ -52,6 +56,26 @@ def add_watermark(image_bytes, watermark_path=WATERMARK_PATH, offset=WATERMARK_O
         if watermark.mode != 'RGBA':
             watermark = watermark.convert('RGBA')
 
+        # Уменьшаем размер watermark на 20% (оставляем 80%)
+        original_size = watermark.size
+        new_size = (int(watermark.width * 0.8), int(watermark.height * 0.8))
+        watermark = watermark.resize(new_size, Image.Resampling.LANCZOS)
+        print(f"[INFO] Watermark resized: {original_size} -> {new_size}")
+
+        # Устанавливаем прозрачность 70% (255 * 0.7 = 178)
+        watermark_data = watermark.getdata()
+        new_data = []
+        for item in watermark_data:
+            r, g, b, a = item
+            # Устанавливаем 70% непрозрачности
+            if a > 0:  # Только для непрозрачных пикселей
+                new_alpha = int(255 * 0.7)  # 70% непрозрачности
+                new_data.append((r, g, b, new_alpha))
+            else:
+                new_data.append((r, g, b, 0))
+        watermark.putdata(new_data)
+        print(f"[INFO] Watermark opacity set to 70%")
+
         # Вычисляем позицию watermark (правый нижний угол с отступом)
         base_width, base_height = base_image.size
         watermark_width, watermark_height = watermark.size
@@ -67,6 +91,7 @@ def add_watermark(image_bytes, watermark_path=WATERMARK_PATH, offset=WATERMARK_O
 
         # Накладываем watermark на основное изображение
         watermarked = Image.alpha_composite(base_image, transparent)
+        print(f"[OK] Watermark applied successfully at position {position}")
 
         # Конвертируем обратно в RGB для сохранения
         watermarked = watermarked.convert('RGB')
@@ -76,6 +101,7 @@ def add_watermark(image_bytes, watermark_path=WATERMARK_PATH, offset=WATERMARK_O
         watermarked.save(output, format='PNG', quality=95)
         output.seek(0)
 
+        print(f"[OK] Watermarked image saved, size: {len(output.getvalue())} bytes")
         return output
 
     except Exception as e:

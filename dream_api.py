@@ -29,7 +29,7 @@ def generate_dream(prompt: str, images=None, format_ratio="1:1", model="sd3.5-la
             "sd3.5-large": "sd3.5-large",
             "sd3.5-large-turbo": "sd3.5-large-turbo",
             "sd3.5-medium": "sd3.5-medium",
-            "sd3.5-flash": "sd3-flash"
+            "sd3.5-flash": "sd3.5-flash"
         }
 
         engine_id = model_map.get(model, "sd3.5-large")

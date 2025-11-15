@@ -5,6 +5,7 @@
 import requests
 import io
 from settings import STABILITY_API_KEY
+from ai_tools import translate_to_english
 
 
 def generate_with_style_guide(image_path: str, prompt: str,
@@ -33,6 +34,18 @@ def generate_with_style_guide(image_path: str, prompt: str,
         print(f"[INFO] Aspect ratio: {aspect_ratio}")
         print(f"[INFO] Fidelity: {fidelity}")
 
+        # Переводим промпт на английский
+        print(f"[INFO] Translating prompt to English...")
+        english_prompt = translate_to_english(prompt)
+        print(f"[OK] Translated prompt: {english_prompt}")
+
+        # Переводим negative prompt если указан
+        english_negative = ""
+        if negative_prompt:
+            print(f"[INFO] Translating negative prompt to English...")
+            english_negative = translate_to_english(negative_prompt)
+            print(f"[OK] Translated negative prompt: {english_negative}")
+
         api_url = "https://api.stability.ai/v2beta/stable-image/control/style"
 
         headers = {
@@ -42,7 +55,7 @@ def generate_with_style_guide(image_path: str, prompt: str,
 
         # Параметры запроса
         data = {
-            "prompt": prompt,
+            "prompt": english_prompt,
             "aspect_ratio": aspect_ratio,
             "fidelity": fidelity,
             "output_format": output_format,
@@ -50,8 +63,8 @@ def generate_with_style_guide(image_path: str, prompt: str,
         }
 
         # Добавляем negative prompt если указан
-        if negative_prompt:
-            data["negative_prompt"] = negative_prompt
+        if english_negative:
+            data["negative_prompt"] = english_negative
 
         # Открываем файл
         files = {
