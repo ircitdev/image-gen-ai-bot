@@ -327,24 +327,52 @@ async def admin_users_command(update, context):
         await update.message.reply_text("📊 Пока нет пользователей с генерациями.")
         return
 
-    # Формируем список пользователей
-    msg = "📊 <b>Все пользователи:</b>\n\n"
+    # Формируем список пользователей с кнопками
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from datetime import datetime
 
     for user in users:
-        msg += f"<b>ID:</b> {user['user_id']}\n"
-        msg += f"💎 Использовано: {user['used']} | Осталось: {user['remaining']}\n"
-        if user['first_generation'] != "Не было":
-            msg += f"📅 Первая генерация: {user['first_generation']}\n"
-        msg += "\n"
+        user_id = int(user['user_id'])
 
-    # Telegram имеет лимит на длину сообщения (4096 символов)
-    if len(msg) > 4000:
-        # Разбиваем на части
-        parts = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
-        for part in parts:
-            await update.message.reply_text(part, parse_mode="HTML")
-    else:
-        await update.message.reply_text(msg, parse_mode="HTML")
+        # Пытаемся получить информацию о пользователе из Telegram
+        try:
+            user_info = await context.bot.get_chat(user_id)
+            username = f"@{user_info.username}" if user_info.username else "Нет username"
+            full_name = user_info.full_name if user_info.full_name else "Нет имени"
+        except:
+            username = "Нет доступа"
+            full_name = "Нет доступа"
+
+        # Форматируем дату
+        first_gen = user['first_generation']
+        if first_gen != "Не было":
+            try:
+                dt = datetime.fromisoformat(first_gen)
+                # Месяцы на русском
+                months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+                         'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+                date_str = f"{dt.day} {months[dt.month-1]} {dt.year} 🕑 {dt.hour:02d}:{dt.minute:02d}"
+            except:
+                date_str = first_gen
+        else:
+            date_str = "Не было"
+
+        # Формируем сообщение
+        msg = f"<b>ID:</b> {user_id} {username}\n"
+        msg += f"{full_name}\n"
+        msg += f"💎 Использовано: {user['used']} | Осталось: {user['remaining']}\n"
+        msg += f"📅 Старт: {date_str}\n"
+        msg += f"👥 Приглашено друзей: {user['referrals_count']}"
+
+        # Создаем кнопки
+        keyboard = []
+        if user['remaining'] == 0:
+            keyboard.append([InlineKeyboardButton("➕ 10 генераций", callback_data=f"admin_add10_{user_id}")])
+
+        reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+
+        # Отправляем сообщение с кнопками
+        await update.message.reply_text(msg, parse_mode="HTML", reply_markup=reply_markup)
 
 async def admin_add_command(update, context):
     """Команда /admin_add - добавить генерации пользователю (только для админа)
@@ -356,15 +384,11 @@ async def admin_add_command(update, context):
         await update.message.reply_text("❌ У вас нет прав для использования этой команды.")
         return
 
-    # Проверяем аргументы
     if len(context.args) != 2:
         await update.message.reply_text(
-            "❌ Неверный формат команды.\n\n"
-            "<b>Использование:</b>\n"
-            "/admin_add USER_ID AMOUNT\n\n"
-            "<b>Пример:</b>\n"
-            "/admin_add 123456789 5",
-            parse_mode="HTML"
+            "❌ Неправильный формат команды\n\n"
+            "Используйте: /admin_add USER_ID AMOUNT\n"
+            "Пример: /admin_add 123456789 50"
         )
         return
 
@@ -380,13 +404,23 @@ async def admin_add_command(update, context):
         remaining = add_generations(target_user_id, amount)
 
         await update.message.reply_text(
-            f"✅ Успешно добавлено {amount} генераций пользователю {target_user_id}\n\n"
-            f"💎 У пользователя теперь осталось: {remaining} генераций",
-            parse_mode="HTML"
+            f"✅ Пользователю {target_user_id} добавлено {amount} генераций\n"
+            f"💎 Теперь доступно: {remaining} генераций"
         )
+
+        # Отправляем уведомление пользователю
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text=f"🎁 Админ дарит вам +{amount} бесплатных генераций!"
+            )
+        except Exception as e:
+            print(f"[WARNING] Could not send notification to user {target_user_id}: {e}")
 
     except ValueError:
         await update.message.reply_text("❌ USER_ID и AMOUNT должны быть числами.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {str(e)}")
 
 async def style_transfer_command(update, context):
     """Команда /styletransfer - начать процесс переноса стиля"""
@@ -1181,6 +1215,28 @@ async def callbacks(update, context):
     query = update.callback_query
     uid = query.from_user.id
     data = query.data
+
+    # Обработка кнопки "➕ 10 генераций" (только для админа)
+    if data.startswith("admin_add10_"):
+        if uid != ADMIN_ID:
+            await query.answer("❌ У вас нет прав для этого действия.", show_alert=True)
+            return
+
+        target_user_id = int(data[12:])  # Убираем "admin_add10_"
+        remaining = add_generations(target_user_id, 10)
+
+        await query.answer("✅ Добавлено 10 генераций", show_alert=True)
+
+        # Отправляем уведомление пользователю
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text="🎁 Админ дарит вам +10 бесплатных генераций!"
+            )
+        except Exception as e:
+            pass
+
+        return
 
     # Обработка кнопки "Редактировать" для саммари URL
     if data == "edit_summary":
