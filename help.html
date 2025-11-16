@@ -615,6 +615,21 @@
             transform: translateY(-2px);
         }
 
+
+        .example-images-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .example-images-grid img {
+            width: 100%;
+            height: auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
         .action-button:active {
             transform: translateY(0);
         }
@@ -654,8 +669,8 @@
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">🤖</div>
-                        <div class="feature-title">ChatGPT-4o</div>
-                        <div class="feature-description">Автоматический перевод и улучшение промптов</div>
+                        <div class="feature-title">ChatGPT & DALL-E</div>
+                        <div class="feature-description">GPT-4o/GPT-5 для промптов + DALL-E 2/3 для генерации</div>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">🔍</div>
@@ -702,6 +717,13 @@
                         • <b>Search & Replace</b> - поиск и замена объектов на другие<br>
                         • <b>Erase</b> - умное удаление объектов с заполнением фона<br><br>
 
+
+                        <strong>🎨 DALL-E Integration:</strong><br>
+                        • Выбор движка генерации: Stable Diffusion 3.5 или DALL-E (ChatGPT)<br>
+                        • DALL-E 2: быстрая генерация (256x256, 512x512, 1024x1024)<br>
+                        • DALL-E 3: лучшее качество с HD режимом (1024x1024, 1024x1792, 1792x1024)<br>
+                        • Выбор GPT модели (GPT-4o или GPT-5) для обработки промптов<br><br>
+
                         <strong>🔧 Технические улучшения:</strong><br>
                         • Автоматический перевод промптов на английский для всех функций<br>
                         • Улучшенная видимость watermark (увеличена непрозрачность на 120%)<br>
@@ -727,15 +749,15 @@
                         </div>
                         <div class="step">
                             <div class="step-number">2</div>
-                            <div class="step-text">Выберите модель SD 3.5 (large, large-turbo, medium, flash)</div>
+                            <div class="step-text">Выберите движок: Stable Diffusion 3.5 или DALL-E</div>
                         </div>
                         <div class="step">
                             <div class="step-number">3</div>
-                            <div class="step-text">Выберите формат изображения (1:1, 16:9, 9:16 и др.)</div>
+                            <div class="step-text">Для SD: выберите GPT модель → модель SD → формат → стиль</div>
                         </div>
                         <div class="step">
                             <div class="step-number">4</div>
-                            <div class="step-text">Настройте тип кадра, ракурс, стиль, освещение и качество</div>
+                            <div class="step-text">Для DALL-E: выберите модель DALL-E → размер → качество (для DALL-E 3)</div>
                         </div>
                         <div class="step">
                             <div class="step-number">5</div>
@@ -745,12 +767,16 @@
                     <div class="chat-container">
                         <div class="example-title">💡 Пример диалога:</div>
                         <div class="user-message">Кот сидит на стуле</div>
-                        <div class="bot-message">Выбери модель → SD 3.5 Large</div>
-                        <div class="bot-message">Выбери формат → 1:1</div>
-                        <div class="bot-message">... (выбор параметров) ...</div>
+                        <div class="bot-message">Выбери движок генерации: [SD 3.5] [DALL-E]</div>
+                        <div class="bot-message">Выбрано: DALL-E → Выбери модель DALL-E</div>
+                        <div class="bot-message">Выбрано: DALL-E 3 → Выбери размер</div>
+                        <div class="bot-message">Выбрано: 1024x1024 → Выбери качество</div>
                         <div class="bot-message">✅ Изображение готово</div>
                     </div>
-                    <img src="examples/command_new.jpg" alt="Пример /new" class="example-image" onerror="this.src='https://via.placeholder.com/600x600/e0e0e1/0071e3?text=New+Command+Example'">
+                    <div class="example-images-grid">
+                        <img src="https://via.placeholder.com/400x400/0071e3/ffffff?text=DALL-E+Example" alt="DALL-E Example" class="example-image">
+                        <img src="https://via.placeholder.com/400x400/0071e3/ffffff?text=SD+3.5+Example" alt="SD 3.5 Example" class="example-image">
+                    </div>
                 </div>
 
                 <div class="card">
