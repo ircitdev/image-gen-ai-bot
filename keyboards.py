@@ -46,23 +46,23 @@ def dalle_quality_kb():
 def model_kb():
     """Клавиатура для выбора модели SD 3.5"""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("SD 3.5 Large", callback_data="model_sd3.5-large")],
-        [InlineKeyboardButton("SD 3.5 Large Turbo", callback_data="model_sd3.5-large-turbo")],
-        [InlineKeyboardButton("SD 3.5 Medium", callback_data="model_sd3.5-medium")],
-        [InlineKeyboardButton("SD 3.5 Flash", callback_data="model_sd3.5-flash")]
+        [InlineKeyboardButton("SD 3.5 Large (Макс качество и детализация)", callback_data="model_sd3.5-large")],
+        [InlineKeyboardButton("SD 3.5 Large Turbo (Быстрая генерация)", callback_data="model_sd3.5-large-turbo")],
+        [InlineKeyboardButton("SD 3.5 Medium (Баланс качества и скорости)", callback_data="model_sd3.5-medium")],
+        [InlineKeyboardButton("SD 3.5 Flash (Самая быстрая генерация)", callback_data="model_sd3.5-flash")]
     ])
 
 def format_kb():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("1:1", callback_data="fmt_1:1"),
-         InlineKeyboardButton("21:9", callback_data="fmt_21:9")],
-        [InlineKeyboardButton("16:9", callback_data="fmt_16:9"),
-         InlineKeyboardButton("3:2", callback_data="fmt_3:2")],
-        [InlineKeyboardButton("5:4", callback_data="fmt_5:4"),
-         InlineKeyboardButton("4:5", callback_data="fmt_4:5")],
-        [InlineKeyboardButton("2:3", callback_data="fmt_2:3"),
-         InlineKeyboardButton("9:16", callback_data="fmt_9:16")],
-        [InlineKeyboardButton("9:21", callback_data="fmt_9:21")]
+        [InlineKeyboardButton("1:1 Квадрат", callback_data="fmt_1:1"),
+         InlineKeyboardButton("21:9 Ультра-широкий", callback_data="fmt_21:9")],
+        [InlineKeyboardButton("16:9 Широкоэкранный", callback_data="fmt_16:9"),
+         InlineKeyboardButton("3:2 Классический", callback_data="fmt_3:2")],
+        [InlineKeyboardButton("5:4 Почти квадрат", callback_data="fmt_5:4"),
+         InlineKeyboardButton("4:5 Портрет", callback_data="fmt_4:5")],
+        [InlineKeyboardButton("2:3 Классический портрет", callback_data="fmt_2:3"),
+         InlineKeyboardButton("9:16 Вертикальный", callback_data="fmt_9:16")],
+        [InlineKeyboardButton("9:21 Ультра-вертикальный", callback_data="fmt_9:21")]
     ])
 
 def shot_kb():
@@ -84,24 +84,24 @@ def angle_kb():
 
 def style_kb():
     styles = [
-        ("None", "none"),
-        ("3D Model", "3d-model"),
-        ("Analog Film", "analog-film"),
-        ("Anime", "anime"),
-        ("Cinematic", "cinematic"),
-        ("Comic Book", "comic-book"),
-        ("Digital Art", "digital-art"),
-        ("Enhance", "enhance"),
-        ("Fantasy Art", "fantasy-art"),
-        ("Isometric", "isometric"),
-        ("Line Art", "line-art"),
-        ("Low Poly", "low-poly"),
-        ("Modeling Compound", "modeling-compound"),
-        ("Neon Punk", "neon-punk"),
-        ("Origami", "origami"),
-        ("Photographic", "photographic"),
-        ("Pixel Art", "pixel-art"),
-        ("Tile Texture", "tile-texture")
+        ("Без стиля", "none"),
+        ("3D модель", "3d-model"),
+        ("Аналоговая пленка", "analog-film"),
+        ("Аниме", "anime"),
+        ("Кинематографичное", "cinematic"),
+        ("Комикс", "comic-book"),
+        ("Цифровое искусство", "digital-art"),
+        ("Улучшенное", "enhance"),
+        ("Фэнтези арт", "fantasy-art"),
+        ("Изометрия", "isometric"),
+        ("Линейная графика", "line-art"),
+        ("Низкополигональное", "low-poly"),
+        ("Пластилин", "modeling-compound"),
+        ("Неон-панк", "neon-punk"),
+        ("Оригами", "origami"),
+        ("Фотореалистичное", "photographic"),
+        ("Пиксель арт", "pixel-art"),
+        ("Текстура плитки", "tile-texture")
     ]
     rows = [[InlineKeyboardButton(display, callback_data=f"style_{value}")] for display, value in styles]
     return InlineKeyboardMarkup(rows)
@@ -139,17 +139,17 @@ def confirm_kb():
 def actions_kb():
     """Клавиатура действий после генерации изображения"""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ Modify", callback_data="action_modify"),
-         InlineKeyboardButton("🖼️ Reference this", callback_data="action_reference")],
-        [InlineKeyboardButton("🎨 More like this", callback_data="action_more"),
-         InlineKeyboardButton("🔄 Reload", callback_data="action_reload")],
-        [InlineKeyboardButton("🔍 Upscale", callback_data="action_upscale"),
-         InlineKeyboardButton("🎭 Variations", callback_data="action_variations")],
-        [InlineKeyboardButton("🖌️ Remove BG", callback_data="action_remove_bg"),
-         InlineKeyboardButton("👤 Face Restore", callback_data="action_face_restore")],
-        [InlineKeyboardButton("🎨 Inpaint", callback_data="action_inpaint")],
+        [InlineKeyboardButton("✏️ Изменить", callback_data="action_modify"),
+         InlineKeyboardButton("🖼️ Использовать как референс", callback_data="action_reference")],
+        [InlineKeyboardButton("🎨 Еще похожие", callback_data="action_more"),
+         InlineKeyboardButton("🔄 Перегенерировать", callback_data="action_reload")],
+        [InlineKeyboardButton("🔍 Увеличить", callback_data="action_upscale"),
+         InlineKeyboardButton("🎭 Вариации", callback_data="action_variations")],
+        [InlineKeyboardButton("🖌️ Убрать фон", callback_data="action_remove_bg"),
+         InlineKeyboardButton("👤 Восстановить лицо", callback_data="action_face_restore")],
+        [InlineKeyboardButton("🎨 Дорисовать", callback_data="action_inpaint")],
         [InlineKeyboardButton("💾 Сохранить как пресет", callback_data="action_save_preset")],
-        [InlineKeyboardButton("➕ New image", callback_data="action_new")]
+        [InlineKeyboardButton("➕ Новое изображение", callback_data="action_new")]
     ])
 
 def summary_kb():
@@ -210,16 +210,16 @@ def payment_method_kb(package_id):
 def edit_actions_kb():
     """Клавиатура действий для редактирования загруженного изображения (/editmy)"""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🖼️ Reference this", callback_data="edit_reference")],
-        [InlineKeyboardButton("🔍 Upscale", callback_data="edit_upscale"),
-         InlineKeyboardButton("🖌️ Remove BG", callback_data="edit_remove_bg")],
-        [InlineKeyboardButton("👤 Face Restore", callback_data="edit_face_restore"),
-         InlineKeyboardButton("🎨 Inpaint", callback_data="edit_inpaint")],
-        [InlineKeyboardButton("🖼️ Outpaint", callback_data="edit_outpaint"),
-         InlineKeyboardButton("🎨 Search & Recolor", callback_data="edit_search_recolor")],
-        [InlineKeyboardButton("🔄 Search & Replace", callback_data="edit_search_replace"),
-         InlineKeyboardButton("🗑️ Erase Object", callback_data="edit_erase")],
-        [InlineKeyboardButton("➕ New image", callback_data="action_new")]
+        [InlineKeyboardButton("🖼️ Использовать как референс", callback_data="edit_reference")],
+        [InlineKeyboardButton("🔍 Увеличить", callback_data="edit_upscale"),
+         InlineKeyboardButton("🖌️ Убрать фон", callback_data="edit_remove_bg")],
+        [InlineKeyboardButton("👤 Восстановить лицо", callback_data="edit_face_restore"),
+         InlineKeyboardButton("🎨 Дорисовать", callback_data="edit_inpaint")],
+        [InlineKeyboardButton("🖼️ Расширить", callback_data="edit_outpaint"),
+         InlineKeyboardButton("🎨 Найти и перекрасить", callback_data="edit_search_recolor")],
+        [InlineKeyboardButton("🔄 Найти и заменить", callback_data="edit_search_replace"),
+         InlineKeyboardButton("🗑️ Стереть объект", callback_data="edit_erase")],
+        [InlineKeyboardButton("➕ Новое изображение", callback_data="action_new")]
     ])
 
 def skip_kb():
