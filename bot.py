@@ -20,6 +20,9 @@ from ai_tools import upscale_image, remove_background, create_variations, inpain
 from settings import TELEGRAM_BOT_TOKEN, WEBAPP_URL, USE_GCS
 from gcs_helper import upload_image as gcs_upload_image
 import gsheets_logger as gsl
+import gcs_helper as gcs
+import gcs_advanced as gcsa
+from keyboards_addon import library_kb_extended, library_filters_kb, image_actions_kb, pagination_kb, export_options_kb, confirm_delete_kb
 
 # ID администратора
 ADMIN_ID = 65876198
@@ -344,60 +347,201 @@ async def profile_command(update, context):
 
     await update.message.reply_text(profile_msg, parse_mode="HTML")
 
-async def library_command(update, context):
-    """Команда /lib - показать библиотеку изображений"""
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+
+async def expiry_command(update, context):
+    """Показать изображения близкие к удалению (осталось < 7 дней)"""
     uid = update.effective_user.id
 
-    # Получаем статистику
-    stats = get_history_stats(uid)
-    history = get_user_history(uid, limit=5)
-    favorites_count = stats["favorites"]
+    try:
+        # Получаем изображения близкие к удалению
+        images = gcsa.get_images_near_expiry(uid, days_before=7)
 
-    if stats["total"] == 0:
-        lib_msg = """📚 <b>Библиотека изображений</b>
+        if not images:
+            await update.message.reply_text(
+                '✅ <b>Нет изображений близких к удалению</b>\n\nВсе ваши изображения будут храниться ещё долго!\n\n<i>Изображения хранятся 60 дней</i>',
+                parse_mode='HTML'
+            )
+            return
 
-История пуста. Создайте первое изображение!
+        # Формируем сообщение
+        msg = f'⚠️ <b>Изображения близкие к удалению</b>\n\n'
+        msg += f'Найдено: {len(images)} изображений\n\n'
 
-💡 Используйте /new для создания"""
-        await update.message.reply_text(lib_msg, parse_mode="HTML")
+        for i, img in enumerate(images[:10], 1):
+            name = img['name'][:30]  # Обрезаем длинные имена
+            days_left = img.get('days_until_deletion', 'N/A')
+            msg += f'{i}. <code>{name}</code>\n'
+            msg += f'   ⏰ Осталось: {days_left} дн.\n\n'
+
+        if len(images) > 10:
+            msg += f'\n<i>...и ещё {len(images) - 10} изображений</i>\n'
+
+        msg += '\n💡 <b>Совет:</b> Экспортируйте изображения через /lib → 📦 Экспорт'
+
+        await update.message.reply_text(msg, parse_mode='HTML')
+
+    except Exception as e:
+        await update.message.reply_text(f'❌ Ошибка: {e}')
+
+async def prompts_command(update, context):
+    """Показать историю промптов пользователя"""
+    uid = update.effective_user.id
+
+    try:
+        # Получаем все изображения пользователя с метаданными
+        images = gcsa.get_user_images_filtered(uid, limit=1000)
+
+        # Собираем промпты
+        prompts_list = []
+        for img in images:
+            metadata = img.get('metadata', {})
+            if metadata.get('prompt'):
+                prompts_list.append({
+                    'prompt': metadata['prompt'],
+                    'name': img['name'],
+                    'time_created': img.get('time_created', '')
+                })
+
+        if not prompts_list:
+            await update.message.reply_text(
+                '📝 <b>История промптов пуста</b>\n\nСоздайте изображения, чтобы увидеть историю промптов',
+                parse_mode='HTML'
+            )
+            return
+
+        # Сортируем по времени создания (новые первые)
+        prompts_list.sort(key=lambda x: x['time_created'], reverse=True)
+
+        # Формируем сообщение с последними 20 промптами
+        msg = '📝 <b>История промптов</b>\n\n'
+        for i, item in enumerate(prompts_list[:20], 1):
+            prompt = item['prompt'][:100]  # Обрезаем длинные промпты
+            msg += f'{i}. <code>{prompt}</code>\n'
+            if len(item['prompt']) > 100:
+                msg += f'   <i>...ещё {len(item["prompt"]) - 100} символов</i>\n'
+            msg += '\n'
+
+        total = len(prompts_list)
+        if total > 20:
+            msg += f'\n<i>Показано 20 из {total} промптов</i>'
+
+        await update.message.reply_text(msg, parse_mode='HTML')
+
+    except Exception as e:
+        await update.message.reply_text(f'❌ Ошибка: {e}')
+
+async def library_command(update, context):
+    """Команда /lib - показать библиотеку изображений из GCS (расширенная версия)"""
+    uid = update.effective_user.id
+
+    # Получаем статистику из GCS
+    stats = gcs.get_user_stats(uid)
+
+    # Получаем статистику избранного
+    try:
+        fav_images = gcsa.get_user_images_filtered(uid, category='favorites', limit=1000)
+        fav_count = len(fav_images)
+    except:
+        fav_count = 0
+
+    if stats['total'] == 0 and fav_count == 0:
+        lib_msg = '''📚 <b>Библиотека изображений</b>
+
+Ваша библиотека пуста. Создайте первое изображение!
+
+💡 Используйте /new для создания'''
+        await update.message.reply_text(lib_msg, parse_mode='HTML')
         return
 
-    lib_msg = f"""📚 <b>Библиотека изображений</b>
+    lib_msg = f'''📚 <b>Библиотека изображений</b>
 
 📊 <b>Статистика:</b>
-• Всего генераций: {stats['total']}
-⭐ Избранное: {favorites_count}
-🎨 Любимая модель: {stats['most_used_model'] or 'N/A'}
-🖌 Любимый стиль: {stats['most_used_style'] or 'N/A'}
-
-📝 <b>Последние генерации:</b>
-"""
-
-    # Показываем последние 5
-    for i, gen in enumerate(history[:5], 1):
-        date = gen['date'][:10]  # Только дата
-        prompt_preview = gen['prompt'][:40] + "..." if len(gen['prompt']) > 40 else gen['prompt']
-        fav_mark = "⭐ " if gen.get('is_favorite', False) else ""
-        lib_msg += f"\n{i}. {fav_mark}{prompt_preview}\n   📅 {date} | {gen['model']}\n"
-
-    # Кнопки управления
-    keyboard = [
-        [
-            InlineKeyboardButton("📜 Вся история", callback_data="lib_history_0"),
-            InlineKeyboardButton("⭐ Избранное", callback_data="lib_favorites")
-        ],
-        [
-            InlineKeyboardButton("🔍 Поиск", callback_data="lib_search"),
-            InlineKeyboardButton("🗑 Очистить", callback_data="lib_clear")
-        ]
-    ]
+🎨 Созданные: {stats['generated']}
+📤 Загруженные: {stats['uploaded']}
+✏️ Отредактированные: {stats['edited']}
+⭐ Избранное: {fav_count}
+━━━━━━━━━━━━━━━━━
+📁 Всего: {stats['total']} изображений'''
 
     await update.message.reply_text(
         lib_msg,
+        parse_mode='HTML',
+        reply_markup=library_kb_extended()
+    )
+
+async def library_show_category(update, context, category=None):
+    """Показать изображения из категории"""
+    from telegram import InputMediaPhoto
+    import gcs_helper as gcs
+    
+    query = update.callback_query
+    await query.answer()
+    
+    uid = query.from_user.id
+    
+    # Определяем категорию
+    if query.data == 'lib_show_generated':
+        category = 'generated'
+        cat_name = 'Созданные'
+    elif query.data == 'lib_show_uploaded':
+        category = 'uploaded'
+        cat_name = 'Загруженные'
+    elif query.data == 'lib_show_edited':
+        category = 'edited'
+        cat_name = 'Отредактированные'
+    else:
+        category = None
+        cat_name = 'Все'
+    
+    # Получаем изображения
+    images = gcs.get_user_images(uid, category=category, limit=10)
+    
+    if not images:
+        await query.edit_message_text(
+            f'📁 <b>{cat_name}</b>\n\nВ этой категории пока нет изображений.',
+            parse_mode='HTML'
+        )
+        return
+    
+    # Формируем сообщение
+    msg = f'📁 <b>{cat_name}</b>\n\nНайдено изображений: {len(images)}\n\nОтправляю последние 10...'
+    await query.edit_message_text(msg, parse_mode='HTML')
+    
+    # Отправляем изображения (по 10 штук в media group)
+    media_group = []
+    for i, img in enumerate(images[:10]):
+        try:
+            media_group.append(InputMediaPhoto(media=img['url']))
+            
+            # Отправляем группами по 10
+            if len(media_group) == 10 or i == len(images) - 1:
+                await context.bot.send_media_group(
+                    chat_id=uid,
+                    media=media_group
+                )
+                media_group = []
+        except Exception as e:
+            print(f'[ERROR] Failed to send image: {e}')
+    
+    # Возвращаемся к главному меню библиотеки
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    keyboard = [
+        [
+            InlineKeyboardButton('🎨 Созданные', callback_data='lib_show_generated'),
+            InlineKeyboardButton('📤 Загруженные', callback_data='lib_show_uploaded')
+        ],
+        [
+            InlineKeyboardButton('✏️ Отредактированные', callback_data='lib_show_edited'),
+            InlineKeyboardButton('📁 Все', callback_data='lib_show_all')
+        ]
+    ]
+    
+    await context.bot.send_message(
+        chat_id=uid,
+        text='✅ Изображения отправлены!\n\nВыберите другую категорию или вернитесь к главному меню.',
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
+        parse_mode='HTML'
     )
 
 async def presets_command(update, context):
@@ -635,6 +779,14 @@ async def handle_message(update, context):
         else:
             # Успех - отправляем отредактированное изображение
             watermarked = add_watermark(result)
+
+        # Сохраняем отредактированное изображение в библиотеку
+        if USE_GCS and result:
+            try:
+                gcs.save_user_image(uid, result, category='edited')
+                print(f'[GCS] Edited image saved to library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save edited image: {e}')
             await context.bot.send_photo(uid, watermarked)
             await context.bot.send_message(
                 uid,
@@ -648,6 +800,27 @@ async def handle_message(update, context):
         user_state[uid].pop("waiting_for_inpaint_mask", None)
         return
 
+    # Обработка добавления тегов
+    if user_state.get(uid, {}).get("awaiting_tags_for"):
+        blob_name = user_state[uid].pop("awaiting_tags_for")
+
+        if not update.message.text:
+            await update.message.reply_text("❌ Отправьте текстовые теги")
+            return
+
+        tags = update.message.text.strip().split()
+
+        try:
+            success = gcsa.add_tags_to_image(uid, blob_name, tags)
+            if success:
+                tags_str = ', '.join(tags)
+                await update.message.reply_text(f"✅ Добавлено тегов: {tags_str}")
+            else:
+                await update.message.reply_text("❌ Ошибка добавления тегов")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка: {e}")
+        return
+
     # Проверяем режим /editmy
     if user_state.get(uid, {}).get("mode") == "editmy" and update.message.photo:
         # Загружаем фото
@@ -658,6 +831,16 @@ async def handle_message(update, context):
 
         # Сохраняем изображение в состоянии
         user_state[uid]["edit_image"] = photo_io
+        
+        # Сохраняем загруженное изображение в библиотеку
+        if USE_GCS:
+            try:
+                photo_io.seek(0)
+                gcs.save_user_image(uid, photo_io, category='uploaded')
+                print(f'[GCS] Uploaded image saved to library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save uploaded image: {e}')
+
         user_state[uid]["mode"] = None
 
         # Показываем кнопки действий
@@ -1051,6 +1234,14 @@ async def handle_message(update, context):
         else:
             # Успех
             watermarked = add_watermark(result)
+
+        # Сохраняем отредактированное изображение в библиотеку
+        if USE_GCS and result:
+            try:
+                gcs.save_user_image(uid, result, category='edited')
+                print(f'[GCS] Edited image saved to library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save edited image: {e}')
             await context.bot.send_photo(uid, watermarked)
             await update.message.reply_text(
                 f"✅ <b>Inpainting завершен!</b>\n\n"
@@ -1137,6 +1328,27 @@ async def handle_message(update, context):
         # Сохраняем новый промпт, последнее изображение и снова включаем режим refinement
         user_state[uid]["last_english_prompt"] = final_english_prompt
         user_state[uid]["last_image"] = last_generated  # Для Upscale, Variations, Remove BG
+
+        # Сохраняем в GCS библиотеку
+        if USE_GCS and last_generated:
+            try:
+                gcs.save_user_image(uid, last_generated, category='generated')
+                # Сохраняем метаданные
+                try:
+                    images = gcsa.get_user_images_filtered(uid, category='generated', limit=1)
+                    if images:
+                        blob_name = images[0]['blob_name']
+                        metadata = {'operation_type': 'generation'}
+                        if 'prompt' in locals():
+                            metadata['prompt'] = prompt
+                        elif 'final_prompt' in locals():
+                            metadata['prompt'] = final_prompt
+                        gcsa.save_image_metadata(uid, blob_name, metadata)
+                except Exception as e:
+                    print(f'[ERROR] Failed to save metadata: {e}')
+                print(f'[GCS] Image saved to user library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save to library: {e}')
         user_state[uid]["in_refinement_mode"] = True
 
         await context.bot.send_message(
@@ -1255,6 +1467,14 @@ Quality: {st['quality']}"""
             await update.message.reply_text(result)
         else:
             watermarked = add_watermark(result)
+
+        # Сохраняем отредактированное изображение в библиотеку
+        if USE_GCS and result:
+            try:
+                gcs.save_user_image(uid, result, category='edited')
+                print(f'[GCS] Edited image saved to library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save edited image: {e}')
             await context.bot.send_photo(uid, watermarked, caption="✅ Объект перекрашен!")
         return
 
@@ -1289,6 +1509,14 @@ Quality: {st['quality']}"""
             await update.message.reply_text(result)
         else:
             watermarked = add_watermark(result)
+
+        # Сохраняем отредактированное изображение в библиотеку
+        if USE_GCS and result:
+            try:
+                gcs.save_user_image(uid, result, category='edited')
+                print(f'[GCS] Edited image saved to library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save edited image: {e}')
             await context.bot.send_photo(uid, watermarked, caption="✅ Объект заменен!")
         return
 
@@ -1308,6 +1536,14 @@ Quality: {st['quality']}"""
             await update.message.reply_text(result)
         else:
             watermarked = add_watermark(result)
+
+        # Сохраняем отредактированное изображение в библиотеку
+        if USE_GCS and result:
+            try:
+                gcs.save_user_image(uid, result, category='edited')
+                print(f'[GCS] Edited image saved to library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save edited image: {e}')
             await context.bot.send_photo(uid, watermarked, caption="✅ Объект удален!")
         return
 
@@ -1392,12 +1628,97 @@ Quality: {st['quality']}"""
     user_state[uid]["prompt"] = text
     await update.message.reply_text("Выбери движок генерации изображений:", reply_markup=image_engine_kb())
 
+
+async def library_show_category(update, context, category=None):
+    """Показать изображения из категории"""
+    from telegram import InputMediaPhoto
+
+    query = update.callback_query
+    uid = update.effective_user.id
+
+    # Определяем категорию из callback_data если не передана
+    if category is None and query:
+        data = query.data
+        if data == 'lib_show_generated':
+            category = 'generated'
+        elif data == 'lib_show_uploaded':
+            category = 'uploaded'
+        elif data == 'lib_show_edited':
+            category = 'edited'
+        elif data == 'lib_show_all':
+            category = None
+        elif data == 'lib_show_favorites':
+            category = 'favorites'
+
+    try:
+        # Получаем изображения (до 10 штук)
+        images = gcsa.get_user_images_filtered(uid, category=category, limit=10)
+
+        if not images:
+            category_names = {
+                'generated': 'созданных',
+                'uploaded': 'загруженных',
+                'edited': 'отредактированных',
+                'favorites': 'избранных',
+                None: ''
+            }
+            cat_text = category_names.get(category, '')
+            await query.edit_message_text(
+                f'📁 Нет {cat_text} изображений',
+                reply_markup=library_kb_extended()
+            )
+            return
+
+        # Формируем media group
+        media_group = []
+        for img in images[:10]:
+            caption = f"📄 {img['name']}"
+            if img.get('metadata', {}).get('prompt'):
+                prompt = img['metadata']['prompt'][:100]
+                caption += f"\n💬 {prompt}"
+
+            media_group.append(InputMediaPhoto(media=img['url'], caption=caption))
+
+        # Отправляем изображения
+        await context.bot.send_media_group(uid, media_group)
+
+        # Показываем кнопки с информацией
+        category_emoji = {
+            'generated': '🎨',
+            'uploaded': '📤',
+            'edited': '✏️',
+            'favorites': '⭐',
+            None: '📁'
+        }
+        emoji = category_emoji.get(category, '📁')
+
+        total_count = len(gcsa.get_user_images_filtered(uid, category=category, limit=1000))
+
+        msg = f'{emoji} Показано: {len(images)} из {total_count}'
+
+        # Если больше 10, добавляем pagination
+        if total_count > 10:
+            msg += f'\n\nИспользуйте фильтры для уточнения'
+
+        await query.edit_message_text(msg, reply_markup=library_kb_extended())
+
+    except Exception as e:
+        await query.edit_message_text(
+            f'❌ Ошибка: {e}',
+            reply_markup=library_kb_extended()
+        )
+
 async def callbacks(update, context):
     query = update.callback_query
     uid = query.from_user.id
     data = query.data
 
     # Обработка кнопки "➕ 10 генераций" (только для админа)
+        # Обработка библиотеки изображений
+    if data.startswith('lib_show_'):
+        await library_show_category(update, context)
+        return
+
     if data.startswith("admin_add10_"):
         if uid != ADMIN_ID:
             await query.answer("❌ У вас нет прав для этого действия.", show_alert=True)
@@ -1723,6 +2044,27 @@ async def callbacks(update, context):
         # Сохраняем промпт и изображение для возможности refinement и AI функций
         user_state[uid]["last_english_prompt"] = final_english_prompt
         user_state[uid]["last_image"] = last_generated
+
+        # Сохраняем в GCS библиотеку
+        if USE_GCS and last_generated:
+            try:
+                gcs.save_user_image(uid, last_generated, category='generated')
+                # Сохраняем метаданные
+                try:
+                    images = gcsa.get_user_images_filtered(uid, category='generated', limit=1)
+                    if images:
+                        blob_name = images[0]['blob_name']
+                        metadata = {'operation_type': 'generation'}
+                        if 'prompt' in locals():
+                            metadata['prompt'] = prompt
+                        elif 'final_prompt' in locals():
+                            metadata['prompt'] = final_prompt
+                        gcsa.save_image_metadata(uid, blob_name, metadata)
+                except Exception as e:
+                    print(f'[ERROR] Failed to save metadata: {e}')
+                print(f'[GCS] Image saved to user library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save to library: {e}')
         user_state[uid]["in_refinement_mode"] = True
 
         # Логируем генерацию в Google Sheets
@@ -1841,6 +2183,27 @@ async def callbacks(update, context):
         # Сохраняем промпт и изображение для возможности refinement и AI функций
         user_state[uid]["last_english_prompt"] = final_english_prompt
         user_state[uid]["last_image"] = last_generated
+
+        # Сохраняем в GCS библиотеку
+        if USE_GCS and last_generated:
+            try:
+                gcs.save_user_image(uid, last_generated, category='generated')
+                # Сохраняем метаданные
+                try:
+                    images = gcsa.get_user_images_filtered(uid, category='generated', limit=1)
+                    if images:
+                        blob_name = images[0]['blob_name']
+                        metadata = {'operation_type': 'generation'}
+                        if 'prompt' in locals():
+                            metadata['prompt'] = prompt
+                        elif 'final_prompt' in locals():
+                            metadata['prompt'] = final_prompt
+                        gcsa.save_image_metadata(uid, blob_name, metadata)
+                except Exception as e:
+                    print(f'[ERROR] Failed to save metadata: {e}')
+                print(f'[GCS] Image saved to user library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save to library: {e}')
         user_state[uid]["in_refinement_mode"] = True
 
         await context.bot.send_message(
@@ -1925,6 +2288,27 @@ async def callbacks(update, context):
         # Сохраняем промпт и изображение для возможности refinement и AI функций
         user_state[uid]["last_english_prompt"] = final_english_prompt
         user_state[uid]["last_image"] = last_generated
+
+        # Сохраняем в GCS библиотеку
+        if USE_GCS and last_generated:
+            try:
+                gcs.save_user_image(uid, last_generated, category='generated')
+                # Сохраняем метаданные
+                try:
+                    images = gcsa.get_user_images_filtered(uid, category='generated', limit=1)
+                    if images:
+                        blob_name = images[0]['blob_name']
+                        metadata = {'operation_type': 'generation'}
+                        if 'prompt' in locals():
+                            metadata['prompt'] = prompt
+                        elif 'final_prompt' in locals():
+                            metadata['prompt'] = final_prompt
+                        gcsa.save_image_metadata(uid, blob_name, metadata)
+                except Exception as e:
+                    print(f'[ERROR] Failed to save metadata: {e}')
+                print(f'[GCS] Image saved to user library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save to library: {e}')
         user_state[uid]["in_refinement_mode"] = True
 
         await context.bot.send_message(
@@ -1953,6 +2337,14 @@ async def callbacks(update, context):
         else:
             # Успех - отправляем upscaled изображение
             watermarked = add_watermark(result)
+
+        # Сохраняем отредактированное изображение в библиотеку
+        if USE_GCS and result:
+            try:
+                gcs.save_user_image(uid, result, category='edited')
+                print(f'[GCS] Edited image saved to library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save edited image: {e}')
             await context.bot.send_photo(uid, watermarked)
             await context.bot.send_message(
                 uid,
@@ -1991,6 +2383,15 @@ async def callbacks(update, context):
             # Успех
             for item in result:
                 watermarked = add_watermark(item)
+
+                # Сохраняем отредактированное изображение в библиотеку
+                if USE_GCS and watermarked:
+                    try:
+                        gcs.save_user_image(uid, watermarked, category='edited')
+                        print(f'[GCS] Edited image (variation) saved to library')
+                    except Exception as e:
+                        print(f'[ERROR] Failed to save edited image: {e}')
+
                 await context.bot.send_photo(uid, watermarked)
 
             # Используем одну генерацию
@@ -2022,6 +2423,15 @@ async def callbacks(update, context):
         else:
             # Успех - отправляем изображение без фона
             # Для PNG с прозрачностью не добавляем watermark, чтобы не портить прозрачность
+
+            # Сохраняем отредактированное изображение в библиотеку
+            if USE_GCS and result:
+                try:
+                    gcs.save_user_image(uid, result, category='edited')
+                    print(f'[GCS] Edited image (remove_bg) saved to library')
+                except Exception as e:
+                    print(f'[ERROR] Failed to save edited image: {e}')
+
             await context.bot.send_document(uid, result, filename="no_bg.png")
             await context.bot.send_message(
                 uid,
@@ -2049,6 +2459,14 @@ async def callbacks(update, context):
         else:
             # Успех - отправляем улучшенное изображение
             watermarked = add_watermark(result)
+
+        # Сохраняем отредактированное изображение в библиотеку
+        if USE_GCS and result:
+            try:
+                gcs.save_user_image(uid, result, category='edited')
+                print(f'[GCS] Edited image saved to library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save edited image: {e}')
             await context.bot.send_photo(uid, watermarked)
             await context.bot.send_message(
                 uid,
@@ -2702,6 +3120,14 @@ async def callbacks(update, context):
             await query.edit_message_text(result)
         else:
             watermarked = add_watermark(result)
+
+        # Сохраняем отредактированное изображение в библиотеку
+        if USE_GCS and result:
+            try:
+                gcs.save_user_image(uid, result, category='edited')
+                print(f'[GCS] Edited image saved to library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save edited image: {e}')
             await context.bot.send_photo(uid, watermarked, caption="✅ Upscale завершен!")
             await query.message.delete()
         return
@@ -2718,6 +3144,15 @@ async def callbacks(update, context):
         if isinstance(result, str):
             await query.edit_message_text(result)
         else:
+
+            # Сохраняем отредактированное изображение в библиотеку
+            if USE_GCS and result:
+                try:
+                    gcs.save_user_image(uid, result, category='edited')
+                    print(f'[GCS] Edited image (remove_bg) saved to library')
+                except Exception as e:
+                    print(f'[ERROR] Failed to save edited image: {e}')
+
             await context.bot.send_photo(uid, result, caption="✅ Фон удален!")
             await query.message.delete()
         return
@@ -2735,6 +3170,14 @@ async def callbacks(update, context):
             await query.edit_message_text(result)
         else:
             watermarked = add_watermark(result)
+
+        # Сохраняем отредактированное изображение в библиотеку
+        if USE_GCS and result:
+            try:
+                gcs.save_user_image(uid, result, category='edited')
+                print(f'[GCS] Edited image saved to library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save edited image: {e}')
             await context.bot.send_photo(uid, watermarked, caption="✅ Лица улучшены!")
             await query.message.delete()
         return
@@ -2805,6 +3248,14 @@ async def callbacks(update, context):
             await query.edit_message_text(result)
         else:
             watermarked = add_watermark(result)
+
+        # Сохраняем отредактированное изображение в библиотеку
+        if USE_GCS and result:
+            try:
+                gcs.save_user_image(uid, result, category='edited')
+                print(f'[GCS] Edited image saved to library')
+            except Exception as e:
+                print(f'[ERROR] Failed to save edited image: {e}')
             await context.bot.send_photo(uid, watermarked, caption="✅ Изображение расширено!")
             await query.message.delete()
         return
@@ -2940,6 +3391,249 @@ async def callbacks(update, context):
                 )
         return
 
+
+    # ==================== РАСШИРЕННЫЕ ОБРАБОТЧИКИ БИБЛИОТЕКИ ====================
+
+    # Показ избранного
+    if data == 'lib_show_favorites':
+        try:
+            images = gcsa.get_user_images_filtered(uid, category='favorites', limit=10)
+            if not images:
+                await query.edit_message_text('⭐ Избранное пусто\n\nДобавьте изображения в избранное!', reply_markup=library_kb_extended())
+                return
+
+            # Отправляем изображения
+            media_group = []
+            for img in images:
+                media_group.append({'type': 'photo', 'media': img['url'], 'caption': f"⭐ {img['name']}"})
+
+            if media_group:
+                from telegram import InputMediaPhoto
+                await context.bot.send_media_group(uid, [InputMediaPhoto(media=m['media'], caption=m.get('caption', '')) for m in media_group[:10]])
+
+            await query.edit_message_text(f'⭐ Избранное ({len(images)} изображений)', reply_markup=library_kb_extended())
+        except Exception as e:
+            await query.edit_message_text(f'❌ Ошибка: {e}', reply_markup=library_kb_extended())
+        return
+
+    # Меню фильтров
+    if data == 'lib_filters':
+        await query.edit_message_text(
+            '🔍 <b>Фильтры по дате</b>\n\nВыберите период:',
+            parse_mode='HTML',
+            reply_markup=library_filters_kb()
+        )
+        return
+
+    # Фильтры по дате
+    if data.startswith('lib_filter_'):
+        days_map = {'1': 1, '7': 7, '30': 30, 'all': None}
+        filter_key = data.replace('lib_filter_', '')
+        days = days_map.get(filter_key)
+
+        try:
+            images = gcsa.get_user_images_filtered(uid, days=days, limit=10)
+            period_text = {1: 'за сегодня', 7: 'за неделю', 30: 'за месяц', None: 'за всё время'}
+
+            if not images:
+                await query.edit_message_text(
+                    f'📅 Изображений {period_text[days]} не найдено',
+                    reply_markup=library_filters_kb()
+                )
+                return
+
+            # Отправляем изображения
+            from telegram import InputMediaPhoto
+            media_group = [InputMediaPhoto(media=img['url'], caption=f"{img['name']}") for img in images[:10]]
+            await context.bot.send_media_group(uid, media_group)
+
+            await query.edit_message_text(
+                f'📅 Найдено {len(images)} изображений {period_text[days]}',
+                reply_markup=library_filters_kb()
+            )
+        except Exception as e:
+            await query.edit_message_text(f'❌ Ошибка: {e}', reply_markup=library_filters_kb())
+        return
+
+    # Возврат к библиотеке
+    if data == 'lib_back':
+        stats = gcs.get_user_stats(uid)
+        try:
+            fav_images = gcsa.get_user_images_filtered(uid, category='favorites', limit=1000)
+            fav_count = len(fav_images)
+        except:
+            fav_count = 0
+
+        lib_msg = f'''📚 <b>Библиотека изображений</b>
+
+📊 <b>Статистика:</b>
+🎨 Созданные: {stats['generated']}
+📤 Загруженные: {stats['uploaded']}
+✏️ Отредактированные: {stats['edited']}
+⭐ Избранное: {fav_count}
+━━━━━━━━━━━━━━━━━
+📁 Всего: {stats['total']} изображений'''
+
+        await query.edit_message_text(lib_msg, parse_mode='HTML', reply_markup=library_kb_extended())
+        return
+
+    # Pagination обработчик
+    if data.startswith('lib_page_'):
+        parts = data.split('_')
+        if len(parts) >= 4:
+            category = parts[2]
+            page = int(parts[3])
+
+            try:
+                offset = page * 10
+                images = gcsa.get_user_images_filtered(
+                    uid,
+                    category=category if category != 'all' else None,
+                    limit=10,
+                    offset=offset
+                )
+
+                if images:
+                    from telegram import InputMediaPhoto
+                    media_group = [InputMediaPhoto(media=img['url'], caption=img['name']) for img in images]
+                    await context.bot.send_media_group(uid, media_group)
+
+                    total_count = len(gcsa.get_user_images_filtered(uid, category=category if category != 'all' else None, limit=1000))
+                    total_pages = (total_count + 9) // 10
+
+                    await query.edit_message_text(
+                        f'Страница {page + 1}/{total_pages}',
+                        reply_markup=pagination_kb(page, total_pages, category)
+                    )
+                else:
+                    await query.answer('Больше нет изображений')
+            except Exception as e:
+                await query.answer(f'Ошибка: {e}', show_alert=True)
+        return
+
+
+    # Поиск по тегам
+    if data == 'lib_tags':
+        user_state[uid]['awaiting_tag_search'] = True
+        await query.edit_message_text(
+            '🏷️ <b>Поиск по тегам</b>\n\nВведите теги через пробел для поиска',
+            parse_mode='HTML'
+        )
+        return
+    # Статистика операций
+    if data == 'lib_stats':
+        try:
+            op_stats = gcsa.get_operation_stats(uid, days=30)
+
+            stats_text = '📊 <b>Статистика операций (30 дней)</b>\n\n'
+            if op_stats:
+                for op, count in sorted(op_stats.items(), key=lambda x: x[1], reverse=True):
+                    stats_text += f'• {op}: {count}\n'
+            else:
+                stats_text += 'Нет данных'
+
+            await query.edit_message_text(stats_text, parse_mode='HTML', reply_markup=library_kb_extended())
+        except Exception as e:
+            await query.edit_message_text(f'❌ Ошибка: {e}', reply_markup=library_kb_extended())
+        return
+
+    # Меню экспорта
+    if data == 'lib_export':
+        await query.edit_message_text(
+            '📦 <b>Экспорт изображений</b>\n\nВыберите что экспортировать:',
+            parse_mode='HTML',
+            reply_markup=export_options_kb()
+        )
+        return
+
+    # Экспорт изображений
+    if data.startswith('export_'):
+        category_map = {
+            'export_all': None,
+            'export_generated': 'generated',
+            'export_edited': 'edited',
+            'export_favorites': 'favorites'
+        }
+        category = category_map.get(data)
+
+        await query.edit_message_text('⏳ Создаю архив...')
+
+        try:
+            zip_buffer = gcsa.export_user_images(uid, category=category)
+            if zip_buffer:
+                category_name = category or 'all'
+                await context.bot.send_document(
+                    uid,
+                    zip_buffer,
+                    filename=f'images_{category_name}_{uid}.zip',
+                    caption='📦 Архив готов!'
+                )
+                await query.message.delete()
+            else:
+                await query.edit_message_text('❌ Не удалось создать архив', reply_markup=export_options_kb())
+        except Exception as e:
+            await query.edit_message_text(f'❌ Ошибка: {e}', reply_markup=export_options_kb())
+        return
+
+    # Toggle избранного
+    if data.startswith('img_fav_') or data.startswith('img_unfav_'):
+        blob_name = data.replace('img_fav_', '').replace('img_unfav_', '')
+
+        try:
+            success = gcsa.toggle_favorite(uid, blob_name)
+            if success:
+                action = 'добавлено в' if 'fav_' in data else 'удалено из'
+                await query.answer(f'✅ Изображение {action} избранное!')
+            else:
+                await query.answer('❌ Ошибка', show_alert=True)
+        except Exception as e:
+            await query.answer(f'❌ {e}', show_alert=True)
+        return
+
+    # Поделиться ссылкой
+    if data.startswith('img_share_'):
+        blob_name = data.replace('img_share_', '')
+        public_url = gcs.get_public_url(blob_name)
+        await query.answer()
+        await context.bot.send_message(
+            uid,
+            f'🔗 <b>Публичная ссылка:</b>\n\n<code>{public_url}</code>\n\nСкопируйте и отправьте кому угодно!',
+            parse_mode='HTML'
+        )
+        return
+
+    # Удаление изображения
+    if data.startswith('img_delete_') and not data.startswith('img_delete_confirm_'):
+        blob_name = data.replace('img_delete_', '')
+        await query.edit_message_text(
+            '🗑️ <b>Удалить изображение?</b>\n\nЭто действие необратимо!',
+            parse_mode='HTML',
+            reply_markup=confirm_delete_kb(blob_name)
+        )
+        return
+
+    # Подтверждение удаления
+    if data.startswith('img_delete_confirm_'):
+        blob_name = data.replace('img_delete_confirm_', '')
+
+        try:
+            success = gcs.delete_user_image(uid, blob_name)
+            if success:
+                await query.edit_message_text('✅ Изображение удалено', reply_markup=library_kb_extended())
+            else:
+                await query.edit_message_text('❌ Ошибка удаления', reply_markup=library_kb_extended())
+        except Exception as e:
+            await query.edit_message_text(f'❌ {e}', reply_markup=library_kb_extended())
+        return
+
+    # Добавление тегов
+    if data.startswith('img_tags_'):
+        blob_name = data.replace('img_tags_', '')
+        user_state[uid]['awaiting_tags_for'] = blob_name
+        await query.edit_message_text(
+            '🏷️ <b>Добавить теги</b>\n\nОтправьте теги через пробел\nНапример: пейзаж горы закат'
+        , parse_mode='HTML')
+        return
 async def precheckout_callback(update, context):
     """Обработка pre-checkout для Telegram Stars"""
     query = update.pre_checkout_query
@@ -3110,6 +3804,8 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("profile", profile_command))
     app.add_handler(CommandHandler("lib", library_command))
+    app.add_handler(CommandHandler("prompts", prompts_command))
+    app.add_handler(CommandHandler("expiry", expiry_command))
     app.add_handler(CommandHandler("presets", presets_command))
     app.add_handler(CommandHandler("buy", buy_command))
 
