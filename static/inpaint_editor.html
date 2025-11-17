@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Редактор маски Inpaint</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            max-height: 100vh;
+        }
+
+        #header {
+            padding: 12px 16px;
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            border-bottom: 1px solid var(--tg-theme-hint-color, #ccc);
+        }
+
+        #header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        #header p {
+            font-size: 13px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background-color: #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #imageCanvas, #maskCanvas {
+            position: absolute;
+            touch-action: none;
+        }
+
+        #imageCanvas {
+            z-index: 1;
+        }
+
+        #maskCanvas {
+            z-index: 2;
+            cursor: crosshair;
+        }
+
+        #controls {
+            padding: 12px 16px;
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            border-top: 1px solid var(--tg-theme-hint-color, #ccc);
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            font-size: 14px;
+            font-weight: 500;
+            min-width: 80px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            height: 32px;
+        }
+
+        .brush-size-value {
+            font-size: 14px;
+            min-width: 45px;
+            text-align: right;
+            font-weight: 600;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:active {
+            opacity: 0.7;
+        }
+
+        #clearBtn {
+            background-color: var(--tg-theme-destructive-text-color, #ff3b30);
+            color: white;
+        }
+
+        #undoBtn {
+            background-color: var(--tg-theme-hint-color, #999);
+            color: white;
+        }
+
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            color: white;
+            font-size: 16px;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="header">
+            <h1>🎨 Редактор маски</h1>
+            <p>Закрасьте область, которую нужно изменить</p>
+        </div>
+
+        <div id="canvas-container">
+            <canvas id="imageCanvas"></canvas>
+            <canvas id="maskCanvas"></canvas>
+        </div>
+
+        <div id="controls">
+            <div class="control-row">
+                <label for="brushSize">Размер:</label>
+                <input type="range" id="brushSize" min="5" max="100" value="30" step="5">
+                <span class="brush-size-value" id="brushSizeValue">30px</span>
+            </div>
+            <div class="control-row button-group">
+                <button id="undoBtn">↶ Отменить</button>
+                <button id="clearBtn">✕ Очистить</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading" class="loading hidden">
+        <div>Загрузка изображения...</div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.enableClosingConfirmation();
+
+        // Получаем параметры из URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const imageUrl = urlParams.get('image');
+        const userId = urlParams.get('user_id');
+
+        // Canvas элементы
+        const imageCanvas = document.getElementById('imageCanvas');
+        const maskCanvas = document.getElementById('maskCanvas');
+        const imageCtx = imageCanvas.getContext('2d');
+        const maskCtx = maskCanvas.getContext('2d');
+
+        // Состояние
+        let isDrawing = false;
+        let brushSize = 30;
+        let image = null;
+        let history = [];
+        let currentHistoryIndex = -1;
+
+        // Настройка размера кисти
+        const brushSizeInput = document.getElementById('brushSize');
+        const brushSizeValue = document.getElementById('brushSizeValue');
+
+        brushSizeInput.addEventListener('input', (e) => {
+            brushSize = parseInt(e.target.value);
+            brushSizeValue.textContent = brushSize + 'px';
+        });
+
+        // Загрузка изображения
+        document.getElementById('loading').classList.remove('hidden');
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function() {
+            image = img;
+            setupCanvas();
+            document.getElementById('loading').classList.add('hidden');
+            saveHistory();
+        };
+        img.onerror = function() {
+            tg.showAlert('Ошибка загрузки изображения');
+            tg.close();
+        };
+        img.src = imageUrl;
+
+        function setupCanvas() {
+            const container = document.getElementById('canvas-container');
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+
+            // Вычисляем размеры canvas с сохранением пропорций
+            let canvasWidth, canvasHeight;
+            const imgRatio = image.width / image.height;
+            const containerRatio = containerWidth / containerHeight;
+
+            if (imgRatio > containerRatio) {
+                canvasWidth = containerWidth;
+                canvasHeight = containerWidth / imgRatio;
+            } else {
+                canvasHeight = containerHeight;
+                canvasWidth = containerHeight * imgRatio;
+            }
+
+            // Устанавливаем размеры для обоих canvas
+            [imageCanvas, maskCanvas].forEach(canvas => {
+                canvas.width = image.width;
+                canvas.height = image.height;
+                canvas.style.width = canvasWidth + 'px';
+                canvas.style.height = canvasHeight + 'px';
+            });
+
+            // Рисуем изображение
+            imageCtx.drawImage(image, 0, 0);
+
+            // Настраиваем маску (прозрачный фон)
+            maskCtx.globalAlpha = 0.5;
+        }
+
+        // Получение координат с учетом масштаба
+        function getCanvasCoordinates(e) {
+            const rect = maskCanvas.getBoundingClientRect();
+            const scaleX = maskCanvas.width / rect.width;
+            const scaleY = maskCanvas.height / rect.height;
+
+            let clientX, clientY;
+            if (e.touches) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        // Рисование на маске
+        function draw(e) {
+            e.preventDefault();
+            if (!isDrawing) return;
+
+            const coords = getCanvasCoordinates(e);
+
+            maskCtx.fillStyle = 'white';
+            maskCtx.beginPath();
+            maskCtx.arc(coords.x, coords.y, brushSize, 0, Math.PI * 2);
+            maskCtx.fill();
+        }
+
+        // События рисования
+        maskCanvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            draw(e);
+        });
+
+        maskCanvas.addEventListener('mousemove', draw);
+
+        maskCanvas.addEventListener('mouseup', () => {
+            if (isDrawing) {
+                isDrawing = false;
+                saveHistory();
+            }
+        });
+
+        maskCanvas.addEventListener('touchstart', (e) => {
+            isDrawing = true;
+            draw(e);
+        }, { passive: false });
+
+        maskCanvas.addEventListener('touchmove', draw, { passive: false });
+
+        maskCanvas.addEventListener('touchend', () => {
+            if (isDrawing) {
+                isDrawing = false;
+                saveHistory();
+            }
+        });
+
+        // История для undo
+        function saveHistory() {
+            // Удаляем все действия после текущего индекса
+            history = history.slice(0, currentHistoryIndex + 1);
+
+            // Сохраняем текущее состояние
+            history.push(maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height));
+            currentHistoryIndex++;
+
+            // Ограничиваем размер истории
+            if (history.length > 20) {
+                history.shift();
+                currentHistoryIndex--;
+            }
+        }
+
+        // Отменить последнее действие
+        document.getElementById('undoBtn').addEventListener('click', () => {
+            if (currentHistoryIndex > 0) {
+                currentHistoryIndex--;
+                maskCtx.putImageData(history[currentHistoryIndex], 0, 0);
+            }
+        });
+
+        // Очистить маску
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+            saveHistory();
+        });
+
+        // Главная кнопка для отправки маски
+        tg.MainButton.setText('Готово');
+        tg.MainButton.show();
+        tg.MainButton.onClick(() => {
+            tg.MainButton.showProgress();
+
+            // Конвертируем маску в изображение
+            const maskDataUrl = maskCanvas.toDataURL('image/png');
+
+            // Отправляем данные боту
+            tg.sendData(JSON.stringify({
+                user_id: userId,
+                mask: maskDataUrl
+            }));
+        });
+
+        // Изменение размера окна
+        window.addEventListener('resize', () => {
+            if (image) {
+                setupCanvas();
+                if (currentHistoryIndex >= 0) {
+                    maskCtx.putImageData(history[currentHistoryIndex], 0, 0);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

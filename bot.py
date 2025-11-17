@@ -1,13 +1,13 @@
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, InlineQueryHandler, PreCheckoutQueryHandler, filters
-from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, InlineQueryResultArticle, InputTextMessageContent
+from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from io import BytesIO
 from state import user_state
 from utils import extract_text_from_url
-from keyboards import gpt_model_kb, image_engine_kb, dalle_model_kb, dalle_size_kb, dalle_quality_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb
+from keyboards import gpt_model_kb, image_engine_kb, dalle_model_kb, dalle_size_kb, dalle_quality_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb, shot_kb, angle_kb, lighting_kb, additional_settings_kb
 from dream_api import generate_dream
 from dalle_api import generate_with_dalle
 from dalle_gen_helper import generate_dalle_image
-from openai_helper import build_final_prompt, enhance_prompt_for_generation
+from openai_helper import build_final_prompt, enhance_prompt_for_generation, translate_to_english
 from style_transfer import apply_style_transfer
 from style_guide import generate_with_style_guide
 from sketch import generate_from_sketch
@@ -17,10 +17,97 @@ from presets import create_preset, get_user_presets, get_preset, delete_preset
 from watermark import add_watermark
 from payments import get_all_packages_message, format_package_message, create_cryptobot_invoice, get_package_info, PACKAGES
 from ai_tools import upscale_image, remove_background, create_variations, inpaint_image, restore_face, outpaint_image, search_and_recolor, search_and_replace, erase_object
-from settings import TELEGRAM_BOT_TOKEN
+from settings import TELEGRAM_BOT_TOKEN, WEBAPP_URL, USE_GCS
+from gcs_helper import upload_image as gcs_upload_image
+import gsheets_logger as gsl
 
 # ID администратора
 ADMIN_ID = 65876198
+
+async def upload_image_to_webapp(context, file_path_or_bytesio, user_id):
+    """
+    Загружает изображение на веб-сервер для Mini App
+    Возвращает URL для открытия Mini App или None при ошибке
+    Использует Google Cloud Storage если USE_GCS=True
+    """
+    import requests
+    import base64
+    from requests.exceptions import ConnectionError, Timeout
+
+    try:
+        # Читаем изображение
+        if isinstance(file_path_or_bytesio, str):
+            with open(file_path_or_bytesio, 'rb') as f:
+                image_bytes = f.read()
+        else:
+            file_path_or_bytesio.seek(0)
+            image_bytes = file_path_or_bytesio.read()
+
+        # Если включен GCS - загружаем напрямую в Google Cloud Storage
+        if USE_GCS:
+            print(f"[INFO] Uploading image to Google Cloud Storage...")
+
+            # Загружаем в GCS
+            gcs_image_url = gcs_upload_image(
+                image_bytes,
+                folder="inpaint",
+                filename=None,  # Автоматическая генерация имени
+                content_type="image/png"
+            )
+
+            if gcs_image_url:
+                # Формируем URL для Mini App с GCS изображением
+                webapp_url = f"{WEBAPP_URL}/?image={gcs_image_url}&user_id={user_id}"
+                print(f"[OK] Image uploaded to GCS, webapp URL: {webapp_url}")
+                return webapp_url
+            else:
+                print(f"[ERROR] Failed to upload image to GCS")
+                return None
+
+        # Иначе используем старый метод через веб-сервер
+        # Конвертируем в base64
+        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+        image_data_url = f"data:image/png;base64,{image_b64}"
+
+        print(f"[INFO] Uploading image to webapp: {WEBAPP_URL}")
+
+        # Отправляем на веб-сервер
+        response = requests.post(
+            f"{WEBAPP_URL}/upload_image",
+            json={
+                'user_id': str(user_id),
+                'image': image_data_url
+            },
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            token = data['token']
+            image_url = f"{WEBAPP_URL}{data['url']}"
+
+            # Формируем URL для Mini App
+            webapp_url = f"{WEBAPP_URL}/?image={image_url}&user_id={user_id}"
+            print(f"[OK] Image uploaded successfully, webapp URL: {webapp_url}")
+            return webapp_url
+        else:
+            print(f"[ERROR] Failed to upload image to webapp: {response.status_code}")
+            print(f"[ERROR] Response: {response.text}")
+            return None
+
+    except ConnectionError as e:
+        print(f"[ERROR] Cannot connect to webapp server at {WEBAPP_URL}")
+        print(f"[ERROR] Make sure webapp_server.py is running!")
+        print(f"[ERROR] Details: {e}")
+        return None
+    except Timeout as e:
+        print(f"[ERROR] Webapp server timeout: {e}")
+        return None
+    except Exception as e:
+        print(f"[ERROR] Exception uploading image to webapp: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 async def setup_commands(application):
     """Настраивает меню команд для обычных пользователей и админа"""
@@ -54,12 +141,38 @@ async def setup_commands(application):
 
 async def start(update, context):
     uid = update.effective_user.id
+    user = update.effective_user
+
+    # Логируем пользователя в Google Sheets
+    referrer_id = None
+    if context.args:
+        try:
+            referrer_id = int(context.args[0])
+        except:
+            pass
+
+    gsl.log_user(
+        user_id=uid,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name or "",
+        language=user.language_code or "ru",
+        referrer_id=referrer_id
+    )
 
     # Обработка реферальной ссылки
     if context.args:
         try:
             referrer_id = int(context.args[0])
             if register_referral(uid, referrer_id):
+                # Логируем реферала
+                gsl.log_referral(
+                    referrer_id=referrer_id,
+                    referrer_username="",  # Получим позже
+                    referred_id=uid,
+                    referred_username=user.username or "",
+                    reward=0  # Награда будет после первой генерации
+                )
                 await update.message.reply_text(
                     "🎉 Вы зарегистрированы по реферальной ссылке!\n\n"
                     "Когда вы создадите первое изображение, ваш друг получит +5 бесплатных генераций!"
@@ -97,11 +210,29 @@ async def start(update, context):
 
     await update.message.reply_text(welcome_msg, parse_mode="HTML")
 
+    # Логируем активность
+    gsl.log_activity(
+        user_id=uid,
+        username=user.username or "",
+        action="/start",
+        details="Bot started",
+        success=True
+    )
+
 async def new_image(update, context):
     """Команда /new - начать новое изображение"""
     uid = update.effective_user.id
     user_state.pop(uid, None)
-    await update.message.reply_text("🆕 Готов к созданию нового изображения!\n\nПришли текст, ссылку или фото с описанием.")
+    await update.message.reply_text(
+        "🆕 Готов к созданию нового изображения!\n\n"
+        "Пришли текст, ссылку или фото с описанием.\n\n"
+        "<i>Например:</i>\n"
+        "<blockquote>Создайте сверхреалистичное групповое селфи, как будто оно было снято фронтальной камерой смартфона. "
+        "Мужчина с короткой стрижкой в белом деловом костюме находится в центре, в окружении классических персонажей фильмов ужасов: "
+        "Фредди Крюгера, Джейсона Вурхиза, Майкла Майерса, Пеннивайза, Призрачного Лица, Чаки и Самары Морган. "
+        "Все персонажи в кадре появляются очень близко друг к другу, некоторые наклоняются вперед, словно на непринужденном селфи.</blockquote>",
+        parse_mode="HTML"
+    )
 
 async def editmy_command(update, context):
     """Команда /editmy - редактировать загруженное изображение"""
@@ -472,6 +603,50 @@ async def sketch_command(update, context):
 
 async def handle_message(update, context):
     uid = update.effective_user.id
+
+    # Проверяем, ожидается ли промпт для inpaint
+    if user_state.get(uid, {}).get("waiting_for_inpaint_prompt"):
+        user_state[uid]["waiting_for_inpaint_prompt"] = False
+
+        if not update.message.text:
+            await update.message.reply_text("❌ Пожалуйста, отправьте текстовое описание")
+            user_state[uid]["waiting_for_inpaint_prompt"] = True
+            return
+
+        prompt = update.message.text.strip()
+
+        # Проверяем наличие маски и изображения
+        if not user_state[uid].get("inpaint_mask") or not user_state[uid].get("edit_image"):
+            await update.message.reply_text("❌ Нет маски или изображения для inpainting")
+            return
+
+        await update.message.reply_text("⏳ <b>Обработка изображения...</b>\n\nЭто может занять до минуты.", parse_mode="HTML")
+
+        # Выполняем inpaint
+        result = inpaint_image(
+            user_state[uid]["edit_image"],
+            user_state[uid]["inpaint_mask"],
+            prompt
+        )
+
+        if isinstance(result, str):
+            # Ошибка
+            await update.message.reply_text(result)
+        else:
+            # Успех - отправляем отредактированное изображение
+            watermarked = add_watermark(result)
+            await context.bot.send_photo(uid, watermarked)
+            await context.bot.send_message(
+                uid,
+                f"✅ <b>Inpainting завершен!</b>\n\n🎨 Промпт: <code>{prompt}</code>",
+                parse_mode="HTML",
+                reply_markup=actions_kb()
+            )
+
+        # Очищаем состояние
+        user_state[uid].pop("inpaint_mask", None)
+        user_state[uid].pop("waiting_for_inpaint_mask", None)
+        return
 
     # Проверяем режим /editmy
     if user_state.get(uid, {}).get("mode") == "editmy" and update.message.photo:
@@ -928,8 +1103,14 @@ async def handle_message(update, context):
         final_english_prompt = build_final_prompt(text, st["saved_params"], gpt_model)
 
         await update.message.reply_text("⏳ Генерация изображения...")
+
+        # Переводим negative prompt на английский если он есть
+        english_negative = ""
+        if st.get("negative_prompt"):
+            english_negative = translate_to_english(st["negative_prompt"], gpt_model)
+
         images = st["images"]
-        output = generate_dream(final_english_prompt, images, format_ratio=st["saved_params"]["format"], model=st["saved_params"]["model"], style=st["saved_params"].get("style"), negative_prompt=st.get("negative_prompt", ""))
+        output = generate_dream(final_english_prompt, images, format_ratio=st["saved_params"]["format"], model=st["saved_params"]["model"], style=st["saved_params"].get("style"), negative_prompt=english_negative)
 
         last_generated = None
         for item in output:
@@ -1365,6 +1546,52 @@ async def callbacks(update, context):
         if st.get("style", "none") != "none":
             final_prompt_ru += f"\n🖌 <b>Стиль:</b> {style_ru.get(st.get('style', 'none'), st.get('style', 'none'))}"
 
+        # Показываем дополнительные параметры (вид, положение камеры, освещение) если они были выбраны
+        additional_params = st.get("additional_params", {})
+
+        shot_ru = {
+            "establishing": "Обзорный план",
+            "pov": "От первого лица",
+            "wide": "Широкий",
+            "full body": "Во весь рост",
+            "medium": "Средний",
+            "closeup": "Крупный план",
+            "extreme closeup": "Экстремально крупный",
+            "over the shoulder": "Через плечо"
+        }
+
+        angle_ru = {
+            "low angle": "Нижний ракурс",
+            "high angle": "Верхний ракурс",
+            "ground level": "На уровне земли",
+            "overhead": "Сверху",
+            "aerial shot": "Аэросъемка",
+            "drone shot": "Съемка с дрона",
+            "birds eye view": "С высоты птичьего полета",
+            "wide angle": "Широкоугольный объектив",
+            "fisheye lens": "Рыбий глаз"
+        }
+
+        lighting_ru = {
+            "colored gel": "Цветные гели",
+            "chiaroscuro": "Кьяроскуро",
+            "studio lighting": "Студийное освещение",
+            "silhouette": "Силуэт",
+            "iridescent": "Радужное свечение",
+            "golden hour": "Золотой час",
+            "long exposure": "Длинная выдержка",
+            "dramatic light": "Драматичный свет"
+        }
+
+        if additional_params.get("shot"):
+            final_prompt_ru += f"\n🎬 <b>Вид:</b> {shot_ru.get(additional_params['shot'], additional_params['shot'])}"
+
+        if additional_params.get("angle"):
+            final_prompt_ru += f"\n📐 <b>Ракурс:</b> {angle_ru.get(additional_params['angle'], additional_params['angle'])}"
+
+        if additional_params.get("lighting"):
+            final_prompt_ru += f"\n💡 <b>Освещение:</b> {lighting_ru.get(additional_params['lighting'], additional_params['lighting'])}"
+
         if st.get("negative_prompt"):
             final_prompt_ru += f"\n🚫 <b>Negative Prompt:</b> <code>{st['negative_prompt']}</code>"
 
@@ -1387,12 +1614,17 @@ async def callbacks(update, context):
     if data.startswith("style_"):
         user_state[uid]["style"] = data[6:]
 
-        # Предлагаем добавить negative prompt
+        # Инициализируем дополнительные параметры
+        user_state[uid]["additional_params"] = {
+            "shot": "",
+            "angle": "",
+            "lighting": ""
+        }
+
+        # Предлагаем добавить дополнительные параметры (вид, положение камеры, освещение)
         await query.edit_message_text(
-            "🚫 <b>Negative Prompt</b>\n\n"
-            "Хотите указать, что НЕ должно быть на изображении?\n\n"
-            "<i>Например: blurry, low quality, distorted, ugly</i>",
-            reply_markup=negative_prompt_kb(),
+            "💡 <b>Хотите дополнительно указать вид, положение камеры и освещение?</b>",
+            reply_markup=additional_settings_kb(),
             parse_mode="HTML"
         )
         return
@@ -1426,7 +1658,8 @@ async def callbacks(update, context):
         params = {
             'model': st['model'],
             'format': st['format'],
-            'style': st['style']
+            'style': st['style'],
+            'additional_params': st.get('additional_params', {})
         }
 
         # Сохраняем параметры для кнопок More/Reload
@@ -1455,8 +1688,13 @@ async def callbacks(update, context):
 
         images = st["images"]
 
+        # Переводим negative prompt на английский если он есть
+        english_negative = ""
+        if st.get("negative_prompt"):
+            english_negative = translate_to_english(st["negative_prompt"], gpt_model)
+
         # Передаем формат, модель, стиль и negative prompt для генерации
-        output = generate_dream(final_english_prompt, images, format_ratio=st['format'], model=st['model'], style=st.get('style'), negative_prompt=st.get('negative_prompt', ''))
+        output = generate_dream(final_english_prompt, images, format_ratio=st['format'], model=st['model'], style=st.get('style'), negative_prompt=english_negative)
 
         await query.edit_message_text("⏳ <b>Шаг 3/3:</b> Отправка результата...", parse_mode="HTML")
 
@@ -1486,6 +1724,25 @@ async def callbacks(update, context):
         user_state[uid]["last_english_prompt"] = final_english_prompt
         user_state[uid]["last_image"] = last_generated
         user_state[uid]["in_refinement_mode"] = True
+
+        # Логируем генерацию в Google Sheets
+        gsl.log_generation(
+            user_id=uid,
+            username=query.from_user.username or "",
+            engine="sd",
+            model=st['model'],
+            prompt_ru=st['prompt'],
+            prompt_en=final_english_prompt,
+            format_ratio=st['format'],
+            style=st.get('style', ''),
+            additional_params=st.get('additional_params', {}),
+            negative_prompt=st.get('negative_prompt', ''),
+            success=last_generated is not None,
+            error="" if last_generated else "Generation failed"
+        )
+
+        # Обновляем счетчики пользователя в Google Sheets
+        gsl.update_user_generations(uid, increment=1, remaining=remaining)
 
         # Отправляем сообщение с промптом и кнопками действий
         await context.bot.send_message(
@@ -1549,8 +1806,13 @@ async def callbacks(update, context):
             parse_mode="HTML"
         )
 
+        # Переводим negative prompt на английский если он есть
+        english_negative = ""
+        if st.get("negative_prompt"):
+            english_negative = translate_to_english(st["negative_prompt"], gpt_model)
+
         images = st["images"]
-        output = generate_dream(final_english_prompt, images, format_ratio=st["saved_params"]["format"], model=st["saved_params"]["model"], style=st["saved_params"].get("style"), negative_prompt=st.get("negative_prompt", ""))
+        output = generate_dream(final_english_prompt, images, format_ratio=st["saved_params"]["format"], model=st["saved_params"]["model"], style=st["saved_params"].get("style"), negative_prompt=english_negative)
 
         await query.edit_message_text("⏳ <b>Шаг 3/3:</b> Отправка результата...", parse_mode="HTML")
 
@@ -1628,8 +1890,13 @@ async def callbacks(update, context):
             parse_mode="HTML"
         )
 
+        # Переводим negative prompt на английский если он есть
+        english_negative = ""
+        if st.get("negative_prompt"):
+            english_negative = translate_to_english(st["negative_prompt"], gpt_model)
+
         images = st["images"]
-        output = generate_dream(final_english_prompt, images, format_ratio=st["saved_params"]["format"], model=st["saved_params"]["model"], style=st["saved_params"].get("style"), negative_prompt=st.get("negative_prompt", ""))
+        output = generate_dream(final_english_prompt, images, format_ratio=st["saved_params"]["format"], model=st["saved_params"]["model"], style=st["saved_params"].get("style"), negative_prompt=english_negative)
 
         await query.edit_message_text("⏳ <b>Шаг 3/3:</b> Отправка результата...", parse_mode="HTML")
 
@@ -1793,20 +2060,56 @@ async def callbacks(update, context):
 
     # Обработка кнопки "Inpaint"
     if data == "action_inpaint":
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
         st = user_state[uid]
         if not st.get("last_image"):
             await query.answer("❌ Нет изображения для inpainting")
             return
 
-        # Устанавливаем режим ожидания маски
-        st["waiting_for_inpaint_mask"] = True
+        await query.edit_message_text("⏳ <b>Загрузка редактора маски...</b>", parse_mode="HTML")
+
+        # Загружаем изображение на веб-сервер
+        webapp_url = await upload_image_to_webapp(context, st["last_image"], uid)
+
+        if not webapp_url:
+            # Веб-сервер недоступен - показываем инструкцию
+            await query.edit_message_text(
+                "❌ <b>Редактор маски недоступен</b>\n\n"
+                "Веб-сервер для Mini App не запущен.\n\n"
+                "<b>Альтернативный метод:</b>\n"
+                "1. Откройте изображение в графическом редакторе\n"
+                "2. Закрасьте БЕЛЫМ цветом область для изменения\n"
+                "3. Остальное закрасьте ЧЕРНЫМ\n"
+                "4. Сохраните как маску и отправьте боту\n\n"
+                "<b>Для администратора:</b>\n"
+                "Запустите <code>python webapp_server.py</code> для использования интерактивного редактора.",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Назад", callback_data="action_new")]
+                ])
+            )
+            return
+
+        # Сохраняем last_image в edit_image для обработки
+        user_state[uid]["edit_image"] = st["last_image"]
+        user_state[uid]["waiting_for_inpaint_mask"] = True
+
+        # Создаем кнопку для открытия Mini App
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎨 Открыть редактор", web_app=WebAppInfo(url=webapp_url))],
+            [InlineKeyboardButton("❌ Отмена", callback_data="action_new")]
+        ])
 
         await query.edit_message_text(
             "🎨 <b>Inpainting - редактирование части изображения</b>\n\n"
-            "📤 Отправьте изображение-маску, где:\n"
-            "• <b>Белые области</b> - части изображения, которые нужно изменить\n"
-            "• <b>Черные области</b> - части, которые останутся без изменений\n\n"
-            "Вы можете нарисовать маску в любом графическом редакторе.",
+            "Нажмите кнопку ниже, чтобы открыть редактор маски.\n\n"
+            "В редакторе:\n"
+            "• Закрасьте кисточкой область, которую хотите изменить\n"
+            "• Используйте ползунок для изменения размера кисти\n"
+            "• Нажмите 'Готово' когда закончите\n\n"
+            "После этого вам нужно будет описать, что должно быть на закрашенной области.",
+            reply_markup=keyboard,
             parse_mode="HTML"
         )
         return
@@ -1830,6 +2133,97 @@ async def callbacks(update, context):
     if data == "action_new":
         user_state.pop(uid, None)  # Это автоматически очищает in_refinement_mode
         await query.edit_message_text("🆕 Готов к новому изображению!\n\nПришли текст, ссылку или фото с описанием.")
+        return
+
+    # Обработка кнопок дополнительных параметров (вид, положение камеры, освещение)
+    if data == "want_additional":
+        # Показываем диалог выбора вида (shots)
+        await query.edit_message_text(
+            "🎬 <b>Вид</b>\n\nВыберите вид съемки:",
+            reply_markup=shot_kb(),
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "skip_additional":
+        # Пропускаем дополнительные параметры и переходим к negative prompt
+        await query.edit_message_text(
+            "🚫 <b>Negative Prompt</b>\n\n"
+            "Хотите указать, что НЕ должно быть на изображении?\n\n"
+            "<i>Например:</i>\n"
+            "<blockquote>Не используйте искажения, мультяшные эффекты, размытие или водяные знаки.</blockquote>",
+            reply_markup=negative_prompt_kb(),
+            parse_mode="HTML"
+        )
+        return
+
+    # Обработка выбора вида (shots)
+    if data.startswith("shot_"):
+        user_state[uid]["additional_params"]["shot"] = data[5:]
+        # Показываем диалог выбора положения камеры
+        await query.edit_message_text(
+            "📐 <b>Положение камеры</b>\n\nВыберите ракурс:",
+            reply_markup=angle_kb(),
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "skip_shot":
+        user_state[uid]["additional_params"]["shot"] = ""
+        # Показываем диалог выбора положения камеры
+        await query.edit_message_text(
+            "📐 <b>Положение камеры</b>\n\nВыберите ракурс:",
+            reply_markup=angle_kb(),
+            parse_mode="HTML"
+        )
+        return
+
+    # Обработка выбора положения камеры
+    if data.startswith("angle_"):
+        user_state[uid]["additional_params"]["angle"] = data[6:]
+        # Показываем диалог выбора освещения
+        await query.edit_message_text(
+            "💡 <b>Освещение</b>\n\nВыберите тип освещения:",
+            reply_markup=lighting_kb(),
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "skip_angle":
+        user_state[uid]["additional_params"]["angle"] = ""
+        # Показываем диалог выбора освещения
+        await query.edit_message_text(
+            "💡 <b>Освещение</b>\n\nВыберите тип освещения:",
+            reply_markup=lighting_kb(),
+            parse_mode="HTML"
+        )
+        return
+
+    # Обработка выбора освещения
+    if data.startswith("light_"):
+        user_state[uid]["additional_params"]["lighting"] = data[6:]
+        # Переходим к negative prompt
+        await query.edit_message_text(
+            "🚫 <b>Negative Prompt</b>\n\n"
+            "Хотите указать, что НЕ должно быть на изображении?\n\n"
+            "<i>Например:</i>\n"
+            "<blockquote>Не используйте искажения, мультяшные эффекты, размытие или водяные знаки.</blockquote>",
+            reply_markup=negative_prompt_kb(),
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "skip_lighting":
+        user_state[uid]["additional_params"]["lighting"] = ""
+        # Переходим к negative prompt
+        await query.edit_message_text(
+            "🚫 <b>Negative Prompt</b>\n\n"
+            "Хотите указать, что НЕ должно быть на изображении?\n\n"
+            "<i>Например:</i>\n"
+            "<blockquote>Не используйте искажения, мультяшные эффекты, размытие или водяные знаки.</blockquote>",
+            reply_markup=negative_prompt_kb(),
+            parse_mode="HTML"
+        )
         return
 
     # Обработка кнопок negative prompt
@@ -2346,7 +2740,56 @@ async def callbacks(update, context):
         return
 
     if data == "edit_inpaint":
-        await query.answer("⚠️ Inpaint требует маску. Используйте action_inpaint после генерации.", show_alert=True)
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
+        if not user_state.get(uid, {}).get("edit_image"):
+            await query.answer("❌ Нет загруженного изображения", show_alert=True)
+            return
+
+        await query.edit_message_text("⏳ <b>Загрузка редактора маски...</b>", parse_mode="HTML")
+
+        # Загружаем изображение на веб-сервер
+        webapp_url = await upload_image_to_webapp(context, user_state[uid]["edit_image"], uid)
+
+        if not webapp_url:
+            # Веб-сервер недоступен - показываем инструкцию
+            await query.edit_message_text(
+                "❌ <b>Редактор маски недоступен</b>\n\n"
+                "Веб-сервер для Mini App не запущен.\n\n"
+                "<b>Альтернативный метод:</b>\n"
+                "1. Откройте изображение в графическом редакторе\n"
+                "2. Закрасьте БЕЛЫМ цветом область для изменения\n"
+                "3. Остальное закрасьте ЧЕРНЫМ\n"
+                "4. Сохраните как маску и отправьте боту\n\n"
+                "<b>Для администратора:</b>\n"
+                "Запустите <code>python webapp_server.py</code> для использования интерактивного редактора.",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Назад", callback_data="action_new")]
+                ])
+            )
+            return
+
+        # Устанавливаем флаг ожидания маски от Mini App
+        user_state[uid]["waiting_for_inpaint_mask"] = True
+
+        # Создаем кнопку для открытия Mini App
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎨 Открыть редактор", web_app=WebAppInfo(url=webapp_url))],
+            [InlineKeyboardButton("❌ Отмена", callback_data="action_new")]
+        ])
+
+        await query.edit_message_text(
+            "🎨 <b>Inpainting - редактирование части изображения</b>\n\n"
+            "Нажмите кнопку ниже, чтобы открыть редактор маски.\n\n"
+            "В редакторе:\n"
+            "• Закрасьте кисточкой область, которую хотите изменить\n"
+            "• Используйте ползунок для изменения размера кисти\n"
+            "• Нажмите 'Готово' когда закончите\n\n"
+            "После этого вам нужно будет описать, что должно быть на закрашенной области.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
         return
 
     if data == "edit_outpaint":
@@ -2605,6 +3048,50 @@ async def inline_query(update, context):
 
     await update.inline_query.answer(results, cache_time=10)
 
+async def handle_web_app_data(update, context):
+    """Обработчик данных от Mini App (маска для inpaint)"""
+    import json
+    import base64
+
+    uid = update.effective_user.id
+
+    try:
+        # Получаем данные от Mini App
+        data = json.loads(update.effective_message.web_app_data.data)
+
+        user_id_from_app = data.get('user_id')
+        mask_data_url = data.get('mask')
+
+        if not mask_data_url:
+            await update.message.reply_text("❌ Не получена маска от редактора")
+            return
+
+        # Декодируем маску из base64
+        mask_b64 = mask_data_url.split(',')[1]
+        mask_bytes = base64.b64decode(mask_b64)
+        mask_image = BytesIO(mask_bytes)
+        mask_image.seek(0)
+
+        # Сохраняем маску в user_state
+        user_state[uid]["inpaint_mask"] = mask_image
+        user_state[uid]["waiting_for_inpaint_prompt"] = True
+
+        await update.message.reply_text(
+            "✅ <b>Маска получена!</b>\n\n"
+            "Теперь опишите, что должно быть на закрашенной области.\n\n"
+            "<i>Например: красивый цветок, солнечное небо, зеленая трава</i>",
+            parse_mode="HTML"
+        )
+
+    except Exception as e:
+        print(f"[ERROR] Error handling web app data: {e}")
+        import traceback
+        traceback.print_exc()
+        await update.message.reply_text(
+            "❌ Ошибка обработки данных от редактора.\n"
+            "Попробуйте еще раз или обратитесь в поддержку."
+        )
+
 async def post_init(application):
     """Вызывается после инициализации приложения"""
     await setup_commands(application)
@@ -2631,6 +3118,7 @@ def main():
     app.add_handler(CommandHandler("admin_add", admin_add_command))
 
     # Обработчики сообщений и callback
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(callbacks))
     app.add_handler(InlineQueryHandler(inline_query))

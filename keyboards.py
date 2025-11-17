@@ -66,20 +66,36 @@ def format_kb():
     ])
 
 def shot_kb():
+    """Клавиатура для выбора вида (shots)"""
     shots = [
-        "establishing","pov","wide","full body","medium",
-        "closeup","extreme closeup","over the shoulder"
+        ("Обзорный план", "establishing"),
+        ("От первого лица", "pov"),
+        ("Широкий", "wide"),
+        ("Во весь рост", "full body"),
+        ("Средний", "medium"),
+        ("Крупный план", "closeup"),
+        ("Экстремально крупный", "extreme closeup"),
+        ("Через плечо", "over the shoulder")
     ]
-    rows = [[InlineKeyboardButton(s, callback_data=f"shot_{s}")] for s in shots]
+    rows = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_shot")]]
+    rows.extend([[InlineKeyboardButton(display, callback_data=f"shot_{value}")] for display, value in shots])
     return InlineKeyboardMarkup(rows)
 
 def angle_kb():
+    """Клавиатура для выбора положения камеры"""
     angles = [
-        "low angle","high angle","ground level","overhead",
-        "aerial shot","drone shot","birds eye view",
-        "wide angle","fisheye lens"
+        ("Нижний ракурс", "low angle"),
+        ("Верхний ракурс", "high angle"),
+        ("На уровне земли", "ground level"),
+        ("Сверху", "overhead"),
+        ("Аэросъемка", "aerial shot"),
+        ("Съемка с дрона", "drone shot"),
+        ("С высоты птичьего полета", "birds eye view"),
+        ("Широкоугольный объектив", "wide angle"),
+        ("Рыбий глаз", "fisheye lens")
     ]
-    rows = [[InlineKeyboardButton(a, callback_data=f"angle_{a}")] for a in angles]
+    rows = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_angle")]]
+    rows.extend([[InlineKeyboardButton(display, callback_data=f"angle_{value}")] for display, value in angles])
     return InlineKeyboardMarkup(rows)
 
 def style_kb():
@@ -107,12 +123,19 @@ def style_kb():
     return InlineKeyboardMarkup(rows)
 
 def lighting_kb():
+    """Клавиатура для выбора освещения"""
     lights = [
-        "colored gel","chiaroscuro","studio lighting",
-        "silhouette","iridescent","golden hour",
-        "long exposure","dramatic lighting","motion blur"
+        ("Цветные гели", "colored gel"),
+        ("Кьяроскуро", "chiaroscuro"),
+        ("Студийное освещение", "studio lighting"),
+        ("Силуэт", "silhouette"),
+        ("Радужное свечение", "iridescent"),
+        ("Золотой час", "golden hour"),
+        ("Длинная выдержка", "long exposure"),
+        ("Драматичный свет", "dramatic light")
     ]
-    rows = [[InlineKeyboardButton(l, callback_data=f"light_{l}")] for l in lights]
+    rows = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_lighting")]]
+    rows.extend([[InlineKeyboardButton(display, callback_data=f"light_{value}")] for display, value in lights])
     return InlineKeyboardMarkup(rows)
 
 def quality_kb():
@@ -127,6 +150,13 @@ def negative_prompt_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Добавить Negative Prompt", callback_data="add_negative")],
         [InlineKeyboardButton("▶️ Пропустить", callback_data="skip_negative")]
+    ])
+
+def additional_settings_kb():
+    """Клавиатура для вопроса о дополнительных настройках"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Да, хочу", callback_data="want_additional")],
+        [InlineKeyboardButton("⏩ Пропустить", callback_data="skip_additional")]
     ])
 
 def confirm_kb():

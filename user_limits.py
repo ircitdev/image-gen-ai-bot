@@ -123,12 +123,15 @@ def get_all_users():
         used = data.get("used", 0)
         remaining = FREE_GENERATIONS_LIMIT - used
         first_gen = data.get("first_generation", "Не было")
+        referrals = data.get("referrals", [])
+        referrals_count = len(referrals)
 
         users_list.append({
             "user_id": user_id,
             "used": used,
             "remaining": remaining,
-            "first_generation": first_gen
+            "first_generation": first_gen,
+            "referrals_count": referrals_count
         })
 
     return users_list

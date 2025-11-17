@@ -84,7 +84,7 @@ def translate_to_english(text: str, model: str = "gpt-4o") -> str:
         return text  # Возвращаем оригинал при ошибке
 
 
-def summarize_url_content(url: str, text_content: str) -> str:
+def summarize_url_content(url: str, text_content: str, model: str = "gpt-4o") -> str:
     """
     Создает краткое саммари текста со страницы для создания обложки НА РУССКОМ ЯЗЫКЕ
     """
@@ -133,7 +133,7 @@ def build_final_prompt(base_prompt: str, params: dict, model: str = "gpt-4o") ->
 
     Args:
         base_prompt: Основной текст промпта (на русском или английском)
-        params: Словарь с параметрами (model, format, style)
+        params: Словарь с параметрами (model, format, style, additional_params)
 
     Returns:
         Финальный промпт на английском для Stable Diffusion
@@ -148,6 +148,16 @@ def build_final_prompt(base_prompt: str, params: dict, model: str = "gpt-4o") ->
 
     # Добавляем базовое качество для лучших результатов
     components = [english_prompt, "high quality, detailed"]
+
+    # Добавляем дополнительные параметры камеры и освещения
+    if "additional_params" in params:
+        additional = params["additional_params"]
+        if additional.get("shot"):
+            components.append(additional["shot"])
+        if additional.get("angle"):
+            components.append(additional["angle"])
+        if additional.get("lighting"):
+            components.append(additional["lighting"])
 
     # Собираем все вместе
     final_prompt = ', '.join(components)
