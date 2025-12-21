@@ -19,6 +19,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 # Stability.ai API токен для генерации изображений
 STABILITY_API_KEY = os.getenv("STABILITY_API_KEY", "")
 
+# Google AI Studio API токен для Imagen 3
+GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "")
+
 # CryptoBot API для криптовалютных платежей
 CRYPTOBOT_TOKEN = os.getenv("CRYPTOBOT_TOKEN", "")
 CRYPTOBOT_CURRENCY = os.getenv("CRYPTOBOT_CURRENCY", "USDT")

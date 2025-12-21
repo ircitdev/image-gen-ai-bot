@@ -3,10 +3,12 @@ from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, In
 from io import BytesIO
 from state import user_state
 from utils import extract_text_from_url
-from keyboards import gpt_model_kb, image_engine_kb, dalle_model_kb, dalle_size_kb, dalle_quality_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb, shot_kb, angle_kb, lighting_kb, additional_settings_kb
+from keyboards import gpt_model_kb, image_engine_kb, dalle_model_kb, dalle_size_kb, dalle_quality_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb, shot_kb, angle_kb, lighting_kb, additional_settings_kb, imagen_format_kb
 from dream_api import generate_dream
 from dalle_api import generate_with_dalle
 from dalle_gen_helper import generate_dalle_image
+from imagen_api import generate_with_imagen
+from imagen_gen_helper import generate_imagen_image
 from openai_helper import build_final_prompt, enhance_prompt_for_generation, translate_to_english
 from style_transfer import apply_style_transfer
 from style_guide import generate_with_style_guide
@@ -60,7 +62,7 @@ async def upload_image_to_webapp(context, file_path_or_bytesio, user_id):
 
             if gcs_image_url:
                 # Формируем URL для Mini App с GCS изображением
-                webapp_url = f"{WEBAPP_URL}/?image={gcs_image_url}&user_id={user_id}"
+                webapp_url = f"{WEBAPP_URL}/static/inpaint_editor.html?v=20251203094000&image={gcs_image_url}&user_id={user_id}"
                 print(f"[OK] Image uploaded to GCS, webapp URL: {webapp_url}")
                 return webapp_url
             else:
@@ -90,7 +92,7 @@ async def upload_image_to_webapp(context, file_path_or_bytesio, user_id):
             image_url = f"{WEBAPP_URL}{data['url']}"
 
             # Формируем URL для Mini App
-            webapp_url = f"{WEBAPP_URL}/?image={image_url}&user_id={user_id}"
+            webapp_url = f"{WEBAPP_URL}/static/inpaint_editor.html?v=20251203094000&image={image_url}&user_id={user_id}"
             print(f"[OK] Image uploaded successfully, webapp URL: {webapp_url}")
             return webapp_url
         else:
@@ -1713,6 +1715,9 @@ async def callbacks(update, context):
     uid = query.from_user.id
     data = query.data
 
+    # Debug logging
+    print(f"[DEBUG] Callback received - User: {uid}, Data: {data}")
+
     # Обработка кнопки "➕ 10 генераций" (только для админа)
         # Обработка библиотеки изображений
     if data.startswith('lib_show_'):
@@ -1765,6 +1770,9 @@ async def callbacks(update, context):
         elif engine == "dalle":
             # DALL-E - показываем выбор модели DALL-E
             await query.edit_message_text("Выбери модель DALL-E:", reply_markup=dalle_model_kb())
+        elif engine == "imagen":
+            # Nano Banana 3 (Google Imagen 3) - показываем выбор формата
+            await query.edit_message_text("🍌 Nano Banana 3\n\nВыбери формат изображения:", reply_markup=imagen_format_kb())
         return
 
     # Обработка выбора модели DALL-E
@@ -1792,6 +1800,13 @@ async def callbacks(update, context):
         dalle_quality = data[10:]  # Убираем "dallequal_"
         user_state[uid]["dalle_quality"] = dalle_quality
         await generate_dalle_image(query, uid)
+        return
+
+    # Обработка выбора формата Imagen 3 (Nano Banana 3)
+    if data.startswith("imgfmt_"):
+        imagen_format = data[7:]  # Убираем "imgfmt_"
+        user_state[uid]["imagen_format"] = imagen_format
+        await generate_imagen_image(query, uid)
         return
 
     # Обработка выбора GPT модели
@@ -2477,18 +2492,88 @@ async def callbacks(update, context):
         return
 
     # Обработка кнопки "Inpaint"
-    if data == "action_inpaint":
+    if data == "edit_inpaint":
+        print(f"[DEBUG] edit_inpaint called for user {uid}")
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
         st = user_state[uid]
-        if not st.get("last_image"):
+        print(f"[DEBUG] User state keys: {list(st.keys())}")
+        print(f"[DEBUG] last_image exists: {st.get('last_image') is not None}")
+        print(f"[DEBUG] edit_image exists: {st.get('edit_image') is not None}")
+        # Проверяем наличие изображения (может быть в last_image или edit_image)
+        image_source = st.get("last_image") or st.get("edit_image")
+        print(f"[DEBUG] image_source found: {image_source is not None}")
+        if not image_source:
             await query.answer("❌ Нет изображения для inpainting")
             return
 
         await query.edit_message_text("⏳ <b>Загрузка редактора маски...</b>", parse_mode="HTML")
 
         # Загружаем изображение на веб-сервер
-        webapp_url = await upload_image_to_webapp(context, st["last_image"], uid)
+        webapp_url = await upload_image_to_webapp(context, image_source, uid)
+
+        if not webapp_url:
+            # Веб-сервер недоступен - показываем инструкцию
+            await query.edit_message_text(
+                "❌ <b>Редактор маски недоступен</b>\n\n"
+                "Веб-сервер для Mini App не запущен.\n\n"
+                "<b>Альтернативный метод:</b>\n"
+                "1. Откройте изображение в графическом редакторе\n"
+                "2. Закрасьте БЕЛЫМ цветом область для изменения\n"
+                "3. Остальное закрасьте ЧЕРНЫМ\n"
+                "4. Сохраните как маску и отправьте боту\n\n"
+                "<b>Для администратора:</b>\n"
+                "Запустите <code>python webapp_server.py</code> для использования интерактивного редактора.",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Назад", callback_data="action_new")]
+                ])
+            )
+            return
+
+        # Сохраняем изображение для обработки
+        user_state[uid]["edit_image"] = image_source
+        user_state[uid]["waiting_for_inpaint_mask"] = True
+
+        # Создаем кнопку для открытия Mini App
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎨 Открыть редактор", web_app=WebAppInfo(url=webapp_url))],
+            [InlineKeyboardButton("✅ Завершить", callback_data="inpaint_complete")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="action_new")]
+        ])
+
+        await query.edit_message_text(
+            "🎨 <b>Редактор маски готов!</b>\n\n"
+            "Нажмите кнопку ниже, чтобы открыть интерактивный редактор.\n\n"
+            "В редакторе:\n"
+            "• Закрасьте область, которую нужно изменить\n"
+            "• Используйте ползунок для изменения размера кисти\n"
+            "• Нажмите ✅ Готово когда закончите\n\n"
+            "После создания маски отправьте описание того, что должно появиться на закрашенной области.",
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+        return
+
+    if data == "action_inpaint":
+        print(f"[DEBUG] action_inpaint called for user {uid}")
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
+        st = user_state[uid]
+        print(f"[DEBUG] User state keys: {list(st.keys())}")
+        print(f"[DEBUG] last_image exists: {st.get('last_image') is not None}")
+        print(f"[DEBUG] edit_image exists: {st.get('edit_image') is not None}")
+        # Проверяем наличие изображения (может быть в last_image или edit_image)
+        image_source = st.get("last_image") or st.get("edit_image")
+        print(f"[DEBUG] image_source found: {image_source is not None}")
+        if not image_source:
+            await query.answer("❌ Нет изображения для inpainting")
+            return
+
+        await query.edit_message_text("⏳ <b>Загрузка редактора маски...</b>", parse_mode="HTML")
+
+        # Загружаем изображение на веб-сервер
+        webapp_url = await upload_image_to_webapp(context, image_source, uid)
 
         if not webapp_url:
             # Веб-сервер недоступен - показываем инструкцию
@@ -2510,12 +2595,13 @@ async def callbacks(update, context):
             return
 
         # Сохраняем last_image в edit_image для обработки
-        user_state[uid]["edit_image"] = st["last_image"]
+        user_state[uid]["edit_image"] = image_source
         user_state[uid]["waiting_for_inpaint_mask"] = True
 
         # Создаем кнопку для открытия Mini App
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🎨 Открыть редактор", web_app=WebAppInfo(url=webapp_url))],
+            [InlineKeyboardButton("✅ Завершить", callback_data="inpaint_complete")],
             [InlineKeyboardButton("❌ Отмена", callback_data="action_new")]
         ])
 
@@ -2533,6 +2619,65 @@ async def callbacks(update, context):
         return
 
     # Обработка кнопки "Сохранить как пресет"
+    # Обработка кнопки "✅ Завершить" для inpaint
+    if data == "inpaint_complete":
+        import requests
+        
+        # Получаем pending mask с сервера
+        try:
+            response = requests.get(f'https://imagegen.tools.uspeshnyy.ru/get_pending_mask/{uid}', timeout=10)
+            if response.status_code == 200:
+                mask_data = response.json()
+                mask_id = mask_data.get('mask_id')
+                
+                if not mask_id:
+                    await query.answer("Маска не найдена. Нажмите 'Готово' в редакторе.", show_alert=True)
+                    return
+                
+                # Получаем саму маску
+                mask_response = requests.get(f'https://imagegen.tools.uspeshnyy.ru/get_mask/{mask_id}', timeout=10)
+                if mask_response.status_code != 200:
+                    await query.answer("Не удалось получить маску", show_alert=True)
+                    return
+                
+                mask_full_data = mask_response.json()
+                mask_data_url = mask_full_data.get('mask')
+                original_width = mask_full_data.get('original_width')
+                original_height = mask_full_data.get('original_height')
+                
+                # Декодируем
+                import base64
+                from io import BytesIO
+                mask_b64 = mask_data_url.split(',')[1]
+                mask_bytes = base64.b64decode(mask_b64)
+                mask_image = BytesIO(mask_bytes)
+                mask_image.seek(0)
+                
+                # Масштабируем обратно если нужно
+                if original_width and original_height:
+                    from PIL import Image
+                    img = Image.open(mask_image)
+                    img_resized = img.resize((original_width, original_height), Image.Resampling.LANCZOS)
+                    mask_image = BytesIO()
+                    img_resized.save(mask_image, format='PNG')
+                    mask_image.seek(0)
+                
+                # Сохраняем в user_state
+                user_state[uid]["inpaint_mask"] = mask_image
+                user_state[uid]["waiting_for_inpaint_prompt"] = True
+                
+                await query.edit_message_text(
+                    "✅ Маска получена!\n\nТеперь опишите, что должно быть на закрашенной области.",
+                    parse_mode='HTML'
+                )
+            else:
+                await query.answer("Маска не найдена. Сначала нажмите 'Готово' в редакторе.", show_alert=True)
+        except Exception as e:
+            await query.answer(f"Ошибка: {e}", show_alert=True)
+            import traceback
+            traceback.print_exc()
+        return
+
     if data == "action_save_preset":
         st = user_state[uid]
         if not st.get("saved_params"):
@@ -3219,6 +3364,7 @@ async def callbacks(update, context):
         # Создаем кнопку для открытия Mini App
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🎨 Открыть редактор", web_app=WebAppInfo(url=webapp_url))],
+            [InlineKeyboardButton("✅ Завершить", callback_data="inpaint_complete")],
             [InlineKeyboardButton("❌ Отмена", callback_data="action_new")]
         ])
 
@@ -3743,48 +3889,67 @@ async def inline_query(update, context):
     await update.inline_query.answer(results, cache_time=10)
 
 async def handle_web_app_data(update, context):
-    """Обработчик данных от Mini App (маска для inpaint)"""
     import json
+    print("[DEBUG] handle_web_app_data called!")
     import base64
+    import requests
 
     uid = update.effective_user.id
 
     try:
-        # Получаем данные от Mini App
         data = json.loads(update.effective_message.web_app_data.data)
-
         user_id_from_app = data.get('user_id')
-        mask_data_url = data.get('mask')
+        mask_id = data.get('mask_id')
 
-        if not mask_data_url:
-            await update.message.reply_text("❌ Не получена маска от редактора")
+        if not mask_id:
+            await update.message.reply_text("Не получен ID маски от редактора")
             return
 
-        # Декодируем маску из base64
+        try:
+            response = requests.get(f'https://imagegen.tools.uspeshnyy.ru/get_mask/{mask_id}', timeout=10)
+            if response.status_code != 200:
+                await update.message.reply_text("Не удалось получить маску с сервера")
+                return
+            
+            mask_data = response.json()
+            mask_data_url = mask_data.get('mask')
+            original_width = mask_data.get('original_width')
+            original_height = mask_data.get('original_height')
+            
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка получения маски: {e}")
+            return
+
+        if not mask_data_url:
+            await update.message.reply_text("Не получена маска от редактора")
+            return
+
         mask_b64 = mask_data_url.split(',')[1]
         mask_bytes = base64.b64decode(mask_b64)
         mask_image = BytesIO(mask_bytes)
         mask_image.seek(0)
 
-        # Сохраняем маску в user_state
+        if original_width and original_height:
+            from PIL import Image
+            img = Image.open(mask_image)
+            img_resized = img.resize((original_width, original_height), Image.Resampling.LANCZOS)
+            mask_image = BytesIO()
+            img_resized.save(mask_image, format='PNG')
+            mask_image.seek(0)
+
         user_state[uid]["inpaint_mask"] = mask_image
         user_state[uid]["waiting_for_inpaint_prompt"] = True
 
         await update.message.reply_text(
-            "✅ <b>Маска получена!</b>\n\n"
-            "Теперь опишите, что должно быть на закрашенной области.\n\n"
-            "<i>Например: красивый цветок, солнечное небо, зеленая трава</i>",
-            parse_mode="HTML"
+            "Маска получена! Теперь опишите, что должно быть на закрашенной области.",
+            parse_mode='HTML'
         )
 
     except Exception as e:
-        print(f"[ERROR] Error handling web app data: {e}")
+        await update.message.reply_text(f"Ошибка обработки маски: {e}")
         import traceback
         traceback.print_exc()
-        await update.message.reply_text(
-            "❌ Ошибка обработки данных от редактора.\n"
-            "Попробуйте еще раз или обратитесь в поддержку."
-        )
+
 
 async def post_init(application):
     """Вызывается после инициализации приложения"""

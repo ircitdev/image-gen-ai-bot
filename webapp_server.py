@@ -32,6 +32,19 @@ def index():
     return send_from_directory(STATIC_DIR, 'inpaint_editor.html')
 
 
+@app.route('/help.html')
+@app.route('/help')
+def help_page():
+    """Страница справки"""
+    return send_from_directory(STATIC_DIR, 'help.html')
+
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    """Отдача статических файлов"""
+    return send_from_directory(STATIC_DIR, filename)
+
+
 @app.route('/images/<filename>')
 def serve_image(filename):
     """Отдача изображений"""

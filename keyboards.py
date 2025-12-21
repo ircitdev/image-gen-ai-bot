@@ -11,7 +11,18 @@ def image_engine_kb():
     """Клавиатура для выбора движка генерации изображений"""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🎨 Stable Diffusion 3.5", callback_data="engine_sd")],
-        [InlineKeyboardButton("🤖 DALL-E (ChatGPT)", callback_data="engine_dalle")]
+        [InlineKeyboardButton("🤖 DALL-E (ChatGPT)", callback_data="engine_dalle")],
+        [InlineKeyboardButton("🍌 Nano Banana 3", callback_data="engine_imagen")]
+    ])
+
+def imagen_format_kb():
+    """Клавиатура для выбора формата Imagen 3 (Nano Banana 3)"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("1:1 Квадрат", callback_data="imgfmt_1:1")],
+        [InlineKeyboardButton("16:9 Горизонтальный", callback_data="imgfmt_16:9"),
+         InlineKeyboardButton("9:16 Вертикальный", callback_data="imgfmt_9:16")],
+        [InlineKeyboardButton("4:3 Пейзаж", callback_data="imgfmt_4:3"),
+         InlineKeyboardButton("3:4 Портрет", callback_data="imgfmt_3:4")]
     ])
 
 def dalle_model_kb():

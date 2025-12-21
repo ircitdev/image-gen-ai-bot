@@ -26,16 +26,12 @@ def get_bucket():
     """Получить bucket для хранения изображений"""
     try:
         bucket = storage_client.bucket(BUCKET_NAME)
-
-        # Проверяем существует ли bucket, если нет - создаем
+        
+        # Проверяем существует ли bucket
         if not bucket.exists():
-            print(f"[INFO] Creating bucket {BUCKET_NAME}...")
-            bucket = storage_client.create_bucket(BUCKET_NAME, location="us-central1")
-
-            # Делаем bucket публичным для чтения
-            bucket.make_public(recursive=True, future=True)
-            print(f"[OK] Bucket {BUCKET_NAME} created and made public")
-
+            print(f"[ERROR] Bucket {BUCKET_NAME} does not exist!")
+            return None
+        
         return bucket
     except Exception as e:
         print(f"[ERROR] Failed to get bucket: {e}")
@@ -82,11 +78,8 @@ def upload_image(image_data: Union[bytes, io.BytesIO], folder: str = "images",
         # Загружаем файл
         blob.upload_from_string(data, content_type=content_type)
 
-        # Делаем blob публичным
-        blob.make_public()
-
-        # Получаем публичный URL
-        public_url = blob.public_url
+        # Формируем публичный URL (bucket уже публичный через IAM)
+        public_url = f"{PUBLIC_URL_BASE}/{blob_name}"
 
         print(f"[OK] Image uploaded to GCS: {public_url}")
         return public_url
@@ -219,7 +212,7 @@ def list_images(folder: str = "images", limit: int = 100) -> list:
             return []
 
         blobs = bucket.list_blobs(prefix=f"{folder}/", max_results=limit)
-        return [blob.public_url for blob in blobs]
+        return [f"{PUBLIC_URL_BASE}/{blob.name}" for blob in blobs]
 
     except Exception as e:
         print(f"[ERROR] Failed to list images: {e}")
@@ -227,6 +220,63 @@ def list_images(folder: str = "images", limit: int = 100) -> list:
 
 
 # Тестовая функция
+
+# Save user image functions
+def save_user_image(user_id: int, image_data, category: str = 'generated', filename = None):
+    import uuid
+    from datetime import datetime
+    if not filename:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'{timestamp}_{uuid.uuid4().hex[:8]}.png'
+    folder = f'users/{user_id}/{category}'
+    return upload_image(image_data, folder=folder, filename=filename)
+
+def get_user_images(user_id: int, category = None, limit: int = 100):
+    bucket = get_bucket()
+    if not bucket:
+        return []
+    prefix = f'users/{user_id}/{category}/' if category else f'users/{user_id}/'
+    blobs = bucket.list_blobs(prefix=prefix, max_results=limit)
+    images = []
+    for blob in blobs:
+        if blob.name.endswith('/'):
+            continue
+        parts = blob.name.split('/')
+        img_category = parts[2] if len(parts) > 2 else 'unknown'
+        images.append({
+            'url': f'{PUBLIC_URL_BASE}/{blob.name}',
+            'name': blob.name.split('/')[-1],
+            'category': img_category,
+            'size': blob.size,
+            'created': blob.time_created,
+            'blob_name': blob.name
+        })
+    images.sort(key=lambda x: x['created'], reverse=True)
+    return images
+
+def get_user_stats(user_id: int):
+    bucket = get_bucket()
+    if not bucket:
+        return {'generated': 0, 'uploaded': 0, 'edited': 0, 'total': 0}
+    stats = {'generated': 0, 'uploaded': 0, 'edited': 0, 'total': 0}
+    for category in ['generated', 'uploaded', 'edited']:
+        prefix = f'users/{user_id}/{category}/'
+        blobs = list(bucket.list_blobs(prefix=prefix))
+        count = sum(1 for b in blobs if not b.name.endswith('/'))
+        stats[category] = count
+        stats['total'] += count
+    return stats
+
+def delete_user_image(user_id: int, blob_name: str):
+    if not blob_name.startswith(f'users/{user_id}/'):
+        return False
+    bucket = get_bucket()
+    if not bucket:
+        return False
+    blob = bucket.blob(blob_name)
+    blob.delete()
+    return True
+
 if __name__ == "__main__":
     print("Testing GCS Helper...")
 
