@@ -1070,100 +1070,37 @@ async def handle_message(update, context):
             text = update.message.text.strip()
             # Если пустой промпт, используем дефолтный
             st_state["prompt"] = text if text and text != "-" else "high quality image"
-            st_state["step"] = "negative_prompt"
-            await update.message.reply_text(
-                "<b>Negative Prompt</b> (что исключить, можно оставить пустым):\n"
-                "Отправьте текст или '-' для пропуска.",
-                parse_mode="HTML"
-            )
+
+            # Все параметры собраны, запускаем генерацию
+            await update.message.reply_text("⏳ Применение стиля через Imagen...")
+
+            try:
+                result = apply_style_transfer_imagen(
+                    init_image=st_state["init_image"],
+                    style_image=st_state["style_image"],
+                    prompt=st_state.get("prompt", ""),
+                    aspect_ratio="1:1"
+                )
+
+                if isinstance(result, str):
+                    # Ошибка
+                    await update.message.reply_text(f"❌ {result}")
+                elif isinstance(result, list) and len(result) > 0:
+                    # Успех - отправляем изображение с watermark
+                    result[0].seek(0)
+                    watermarked_image = add_watermark(result[0])
+                    await context.bot.send_photo(uid, watermarked_image)
+                    await context.bot.send_message(uid, "✅ Style Transfer завершен через Google Imagen!")
+                else:
+                    await update.message.reply_text("❌ Не удалось получить изображение")
+
+            except Exception as e:
+                print(f"[Style Transfer Error] {e}")
+                await update.message.reply_text(f"❌ Ошибка: {str(e)}")
+
+            # Очищаем состояние
+            user_state[uid]["style_transfer"] = {"active": False}
             return
-
-        if st_state["step"] == "negative_prompt":
-            text = update.message.text.strip()
-            st_state["negative_prompt"] = "" if text == "-" else text
-            st_state["step"] = "style_strength"
-            await update.message.reply_text(
-                "<b>Style Strength</b> (сила применения стиля, 0.1-1.0):\n"
-                "Пример: 0.8",
-                parse_mode="HTML"
-            )
-            return
-
-        if st_state["step"] == "style_strength":
-            try:
-                value = float(update.message.text.strip())
-                if 0.1 <= value <= 1.0:
-                    st_state["style_strength"] = value
-                    st_state["step"] = "composition_fidelity"
-                    await update.message.reply_text(
-                        "<b>Composition Fidelity</b> (точность композиции, 0.1-1.0):\n"
-                        "Пример: 0.9",
-                        parse_mode="HTML"
-                    )
-                    return
-                else:
-                    await update.message.reply_text("❌ Значение должно быть от 0.1 до 1.0")
-                    return
-            except:
-                await update.message.reply_text("❌ Введите число от 0.1 до 1.0")
-                return
-
-        if st_state["step"] == "composition_fidelity":
-            try:
-                value = float(update.message.text.strip())
-                if 0.1 <= value <= 1.0:
-                    st_state["composition_fidelity"] = value
-                    st_state["step"] = "change_strength"
-                    await update.message.reply_text(
-                        "<b>Change Strength</b> (сила изменений, 0.1-1.0):\n"
-                        "Пример: 0.9",
-                        parse_mode="HTML"
-                    )
-                    return
-                else:
-                    await update.message.reply_text("❌ Значение должно быть от 0.1 до 1.0")
-                    return
-            except:
-                await update.message.reply_text("❌ Введите число от 0.1 до 1.0")
-                return
-
-        if st_state["step"] == "change_strength":
-            try:
-                value = float(update.message.text.strip())
-                if 0.1 <= value <= 1.0:
-                    st_state["change_strength"] = value
-
-                    # Все параметры собраны, запускаем генерацию
-                    await update.message.reply_text("⏳ Применение стиля...")
-
-                    result = apply_style_transfer(
-                        init_image_path=st_state["init_image"],
-                        style_image_path=st_state["style_image"],
-                        prompt=st_state.get("prompt", ""),
-                        negative_prompt=st_state.get("negative_prompt", ""),
-                        style_strength=st_state.get("style_strength", 1.0),
-                        composition_fidelity=st_state.get("composition_fidelity", 0.9),
-                        change_strength=st_state.get("change_strength", 0.9)
-                    )
-
-                    if isinstance(result, str):
-                        # Ошибка
-                        await update.message.reply_text(f"❌ {result}")
-                    else:
-                        # Успех - отправляем изображение с watermark
-                        watermarked_image = add_watermark(result)
-                        await context.bot.send_photo(uid, watermarked_image)
-                        await context.bot.send_message(uid, "✅ Style Transfer завершен!")
-
-                    # Очищаем состояние
-                    user_state[uid]["style_transfer"] = {"active": False}
-                    return
-                else:
-                    await update.message.reply_text("❌ Значение должно быть от 0.1 до 1.0")
-                    return
-            except:
-                await update.message.reply_text("❌ Введите число от 0.1 до 1.0")
-                return
 
     # Проверяем, активен ли процесс Style Guide
     if user_state[uid].get("style_guide", {}).get("active"):
@@ -1192,100 +1129,48 @@ async def handle_message(update, context):
                 await update.message.reply_text("❌ Prompt обязателен для Style Guide!")
                 return
             sg_state["prompt"] = text
-            sg_state["step"] = "negative_prompt"
-            await update.message.reply_text(
-                "<b>Negative Prompt</b> (что исключить, можно оставить пустым):",
-                parse_mode="HTML",
-                reply_markup=skip_kb()
-            )
-            return
 
-        if sg_state["step"] == "negative_prompt":
-            if not update.message.text:
-                await update.message.reply_text("❌ Отправьте текстовое сообщение или '-' для пропуска!")
-                return
-            text = update.message.text.strip()
-            sg_state["negative_prompt"] = "" if text == "-" else text
-            sg_state["step"] = "aspect_ratio"
-            await update.message.reply_text(
-                "<b>Aspect Ratio</b> (формат изображения):",
-                parse_mode="HTML",
-                reply_markup=aspect_ratio_kb()
-            )
-            return
+            # Все параметры собраны, запускаем генерацию
+            await update.message.reply_text("⏳ Генерация изображения в стиле референса через Imagen...")
 
-        if sg_state["step"] == "aspect_ratio":
-            if not update.message.text:
-                await update.message.reply_text("❌ Отправьте текстовое сообщение с форматом!")
-                return
-            text = update.message.text.strip()
-            valid_ratios = ["1:1", "21:9", "16:9", "3:2", "5:4", "4:5", "2:3", "9:16", "9:21"]
-            if text in valid_ratios:
-                sg_state["aspect_ratio"] = text
-                sg_state["step"] = "fidelity"
-                await update.message.reply_text(
-                    "<b>Fidelity</b> (точность следования стилю, 0.1-1.0):\n"
-                    "Выберите или введите свое значение",
-                    parse_mode="HTML",
-                    reply_markup=fidelity_kb()
-                )
-                return
-            else:
-                await update.message.reply_text(f"❌ Выберите один из: {', '.join(valid_ratios)}")
-                return
-
-        if sg_state["step"] == "fidelity":
-            if not update.message.text:
-                await update.message.reply_text("❌ Отправьте число от 0.1 до 1.0!")
-                return
             try:
-                value = float(update.message.text.strip())
-                if 0.1 <= value <= 1.0:
-                    sg_state["fidelity"] = value
+                result = generate_with_style_guide_imagen(
+                    style_image=sg_state["style_image"],
+                    prompt=sg_state["prompt"],
+                    aspect_ratio="1:1"
+                )
 
-                    # Все параметры собраны, запускаем генерацию
-                    await update.message.reply_text("⏳ Генерация изображения в стиле референса...")
+                if isinstance(result, str):
+                    # Ошибка
+                    await update.message.reply_text(f"❌ {result}")
+                elif isinstance(result, list) and len(result) > 0:
+                    # Успех - отправляем изображение с watermark
+                    result[0].seek(0)
+                    watermarked_image = add_watermark(result[0])
+                    await context.bot.send_photo(uid, watermarked_image)
 
-                    result = generate_with_style_guide(
-                        image_path=sg_state["style_image"],
-                        prompt=sg_state["prompt"],
-                        negative_prompt=sg_state.get("negative_prompt", ""),
-                        aspect_ratio=sg_state.get("aspect_ratio", "1:1"),
-                        fidelity=sg_state.get("fidelity", 0.5)
+                    # Сохраняем параметры для возможности повторной генерации
+                    user_state[uid]["last_sg_params"] = {
+                        "style_image": sg_state["style_image"],
+                        "prompt": sg_state["prompt"],
+                        "aspect_ratio": "1:1"
+                    }
+
+                    await context.bot.send_message(
+                        uid,
+                        "✅ Style Guide генерация завершена через Google Imagen!",
+                        reply_markup=style_guide_regenerate_kb()
                     )
-
-                    if isinstance(result, str):
-                        # Ошибка
-                        await update.message.reply_text(f"❌ {result}")
-                    else:
-                        # Успех - отправляем изображение с watermark
-                        watermarked_image = add_watermark(result)
-                        await context.bot.send_photo(uid, watermarked_image)
-
-                        # Сохраняем параметры для возможности повторной генерации
-                        user_state[uid]["last_sg_params"] = {
-                            "style_image": sg_state["style_image"],
-                            "prompt": sg_state["prompt"],
-                            "negative_prompt": sg_state.get("negative_prompt", ""),
-                            "aspect_ratio": sg_state.get("aspect_ratio", "1:1"),
-                            "fidelity": sg_state.get("fidelity", 0.5)
-                        }
-
-                        await context.bot.send_message(
-                            uid,
-                            "✅ Style Guide генерация завершена!",
-                            reply_markup=style_guide_regenerate_kb()
-                        )
-
-                    # Очищаем состояние
-                    user_state[uid]["style_guide"] = {"active": False}
-                    return
                 else:
-                    await update.message.reply_text("❌ Значение должно быть от 0.1 до 1.0")
-                    return
-            except:
-                await update.message.reply_text("❌ Введите число от 0.1 до 1.0")
-                return
+                    await update.message.reply_text("❌ Не удалось получить изображение")
+
+            except Exception as e:
+                print(f"[Style Guide Error] {e}")
+                await update.message.reply_text(f"❌ Ошибка: {str(e)}")
+
+            # Очищаем состояние
+            user_state[uid]["style_guide"] = {"active": False}
+            return
 
     # Проверяем, активен ли процесс Sketch
     if user_state[uid].get("sketch", {}).get("active"):
