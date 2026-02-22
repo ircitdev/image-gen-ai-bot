@@ -61,6 +61,7 @@ from imagen_api import generate_with_imagen
 from imagen_gen_helper import generate_imagen_image
 from imagen3_custom_helper import generate_imagen3_custom_image
 from nano_banana_pro_helper import generate_nano_banana_pro_image
+from gemini_vision_api import analyze_image_for_prompt
 from openai_helper import build_final_prompt, enhance_prompt_for_generation, translate_to_english
 from style_transfer import apply_style_transfer
 from style_guide import generate_with_style_guide
@@ -345,6 +346,40 @@ async def help_command(update, context):
     ])
 
     await update.message.reply_text(help_msg, reply_markup=keyboard, parse_mode="HTML")
+
+
+async def getprompt_command(update, context):
+    """Команда /getprompt - получить промпт по изображению"""
+    uid = update.effective_user.id
+    user_state[uid] = {"mode": "getprompt"}
+
+    await update.message.reply_text(
+        "🔍 <b>Извлечение промпта из изображения</b>
+
+"
+        "📸 Загрузите изображение, и я создам для вас детальный промпт, "
+        "который можно использовать для генерации похожего изображения.
+
+"
+        "<b>Что будет проанализировано:</b>
+"
+        "→ Стиль и композиция
+"
+        "→ Освещение и цвета
+"
+        "→ Настроение и атмосфера
+"
+        "→ Технические детали
+"
+        "→ Художественные элементы
+
+"
+        "Промпт будет улучшен и оптимизирован на 30%!
+
+"
+        "⬆️ Отправьте фото сейчас",
+        parse_mode="HTML"
+    )
 
 async def profile_command(update, context):
     """Команда /profile - показать профиль пользователя"""
@@ -966,6 +1001,76 @@ async def handle_message(update, context):
             "Выберите операцию для редактирования:",
             reply_markup=edit_actions_kb()
         )
+        return
+
+    # Обработка фото для команды /getprompt
+    if user_state.get(uid, {}).get("mode") == "getprompt" and update.message.photo:
+        # Скачиваем фото
+        file = await update.message.photo[-1].get_file()
+        photo_bytes = await file.download_as_bytearray()
+        photo_io = BytesIO(photo_bytes)
+
+        # Сообщение о начале обработки
+        msg = await update.message.reply_text(
+            "🔍 <b>Анализирую изображение...</b>
+
+"
+            "Это может занять 10-30 секунд...",
+            parse_mode="HTML"
+        )
+
+        try:
+            # Анализируем изображение с помощью Gemini Vision
+            prompt = analyze_image_for_prompt(photo_io)
+
+            # Экранируем специальные символы для MarkdownV2
+            def escape_markdown(text):
+                """Экранирование специальных символов для MarkdownV2"""
+                special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+                for char in special_chars:
+                    text = text.replace(char, f'\{char}')
+                return text
+
+            escaped_prompt = escape_markdown(prompt)
+
+            # Отправляем результат с форматированием
+            await msg.edit_text(
+                f"[OK] *Промпт успешно сгенерирован\!*
+
+"
+                f"📋 Скопируйте текст ниже для использования:
+
+"
+                f"```
+{escaped_prompt}
+```
+
+"
+                f"💡 _Этот промпт оптимизирован для AI\-генераторов изображений_
+
+"
+                f"🔄 Хотите создать изображение по этому промпту?
+"
+                f"Используйте /new и вставьте промпт",
+                parse_mode="MarkdownV2"
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[GetPrompt Error] {error_msg}")
+            await msg.edit_text(
+                f"[ERROR] <b>Ошибка при анализе изображения:</b>
+
+"
+                f"{error_msg}
+
+"
+                f"Попробуйте другое изображение или повторите позже.",
+                parse_mode="HTML"
+            )
+
+        # Очищаем состояние
+        user_state.pop(uid, None)
         return
 
     # Проверяем, активен ли процесс Style Transfer
@@ -4251,6 +4356,7 @@ def main():
     app.add_handler(CommandHandler("profile", profile_command))
     app.add_handler(CommandHandler("lib", library_command))
     app.add_handler(CommandHandler("prompts", prompts_command))
+    app.add_handler(CommandHandler("getprompt", getprompt_command))
     app.add_handler(CommandHandler("expiry", expiry_command))
     app.add_handler(CommandHandler("presets", presets_command))
     app.add_handler(CommandHandler("buy", buy_command))
