@@ -16,6 +16,14 @@ def image_engine_kb():
         # [InlineKeyboardButton("👤 Imagen 3 Custom (с фото)", callback_data="engine_imagen3_custom")]  # ВРЕМЕННО ОТКЛЮЧЕНО - API недоступен
     ])
 
+def imagen_model_kb():
+    """Клавиатура для выбора модели Imagen"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🍌 Imagen 4 (стандарт)", callback_data="imagen_model_standard")],
+        [InlineKeyboardButton("💎 Imagen 4 Ultra (качество)", callback_data="imagen_model_ultra")],
+        [InlineKeyboardButton("⚡ Imagen 4 Fast (скорость)", callback_data="imagen_model_fast")]
+    ])
+
 def imagen_format_kb():
     """Клавиатура для выбора формата Imagen 3 (Nano Banana 3)"""
     return InlineKeyboardMarkup([

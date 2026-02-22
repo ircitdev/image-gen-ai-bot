@@ -39,11 +39,27 @@ async def generate_imagen_image(query, uid):
     # Сохраняем английский промпт
     st["last_english_prompt"] = english_prompt
 
-    await query.edit_message_text(f"🍌 Генерация через Nano Banana 4...\n\nФормат: {imagen_format}")
+    # Получаем выбранную модель (по умолчанию imagen-4)
+    imagen_model = st.get("imagen_model", "imagen-4")
+
+    # Эмодзи в зависимости от модели
+    model_emoji = {
+        "imagen-4": "🍌",
+        "imagen-4-ultra": "💎",
+        "imagen-4-fast": "⚡"
+    }.get(imagen_model, "🍌")
+
+    model_name = {
+        "imagen-4": "Imagen 4",
+        "imagen-4-ultra": "Imagen 4 Ultra",
+        "imagen-4-fast": "Imagen 4 Fast"
+    }.get(imagen_model, "Imagen 4")
+
+    await query.edit_message_text(f"{model_emoji} Генерация через {model_name}...\n\nФормат: {imagen_format}")
 
     try:
-        # Генерируем через Imagen 4
-        images = generate_with_imagen(english_prompt, imagen_format, 1)
+        # Генерируем через Imagen 4 с выбранной моделью
+        images = generate_with_imagen(english_prompt, imagen_format, 1, model=imagen_model)
 
         if not images:
             await query.edit_message_text("❌ Не удалось сгенерировать изображение. Попробуйте другой промпт.")
@@ -72,7 +88,7 @@ async def generate_imagen_image(query, uid):
     # Отправляем изображение
     await query.message.reply_photo(
         photo=watermarked,
-        caption=f"🍌 <b>Nano Banana 4</b>\n\n"
+        caption=f"{model_emoji} <b>{model_name}</b>\n\n"
                 f"<b>Промпт:</b> {prompt}\n"
                 f"<b>Формат:</b> {imagen_format}\n\n"
                 f"💎 Осталось генераций: {remaining}",
@@ -81,11 +97,11 @@ async def generate_imagen_image(query, uid):
     )
 
     # Сохраняем в историю
-    add_to_history(uid, prompt, "imagen-4.0", "Nano Banana 4")
+    add_to_history(uid, prompt, imagen_model, model_name)
 
     # Логируем в Google Sheets
     try:
-        gsl.log_generation(uid, prompt, "imagen-4.0-generate-001", imagen_format, "Nano Banana 4")
+        gsl.log_generation(uid, prompt, imagen_model, imagen_format, model_name)
     except Exception as e:
         print(f"[GSL Error] {e}")
 

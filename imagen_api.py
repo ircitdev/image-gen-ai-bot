@@ -1,6 +1,6 @@
 """
 Google AI Studio Imagen 4 API Integration
-Model: imagen-4.0-generate-001 (Nano Banana 4)
+Supports: Imagen 4, Imagen 4 Ultra, Imagen 4 Fast
 Uses Gemini API predict endpoint
 """
 
@@ -8,8 +8,9 @@ import requests
 import base64
 from io import BytesIO
 from settings import GOOGLE_AI_API_KEY
+from imagen_models import get_model_endpoint, get_model_emoji
 
-# Imagen 4 API endpoint - predict (актуальная модель)
+# Legacy URL (для обратной совместимости)
 IMAGEN_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict"
 
 # Маппинг форматов из нашего бота в форматы Imagen
@@ -28,14 +29,15 @@ ASPECT_RATIO_MAP = {
 }
 
 
-def generate_with_imagen(prompt: str, aspect_ratio: str = "1:1", num_images: int = 1) -> list:
+def generate_with_imagen(prompt: str, aspect_ratio: str = "1:1", num_images: int = 1, model: str = "imagen-4") -> list:
     """
-    Генерирует изображение через Google Imagen 3 API
+    Генерирует изображение через Google Imagen 4 API
 
     Args:
         prompt: Текстовый промпт для генерации
         aspect_ratio: Соотношение сторон (1:1, 3:4, 4:3, 9:16, 16:9)
         num_images: Количество изображений (1-4)
+        model: Модель Imagen ("imagen-4", "imagen-4-ultra", "imagen-4-fast")
 
     Returns:
         Список BytesIO объектов с изображениями
@@ -50,7 +52,10 @@ def generate_with_imagen(prompt: str, aspect_ratio: str = "1:1", num_images: int
     num_images = min(max(1, num_images), 4)
 
     # URL с API ключом как query параметр
-    url = f"{IMAGEN_API_URL}?key={GOOGLE_AI_API_KEY}"
+    # Используем динамический endpoint в зависимости от модели
+    endpoint = get_model_endpoint(model)
+    url = f"{endpoint}?key={GOOGLE_AI_API_KEY}"
+    emoji = get_model_emoji(model)
 
     headers = {
         "Content-Type": "application/json"
@@ -69,7 +74,8 @@ def generate_with_imagen(prompt: str, aspect_ratio: str = "1:1", num_images: int
         }
     }
 
-    print(f"[Imagen API] Generating with prompt: {prompt[:100]}...")
+    print(f"[Imagen API] {emoji} Generating with model: {model}")
+    print(f"[Imagen API] Prompt: {prompt[:100]}...")
     print(f"[Imagen API] Aspect ratio: {aspect_ratio} -> {imagen_ratio}")
 
     try:

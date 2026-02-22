@@ -53,7 +53,7 @@ from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, In
 from io import BytesIO
 from state import user_state
 from utils import extract_text_from_url
-from keyboards import gpt_model_kb, image_engine_kb, dalle_model_kb, dalle_size_kb, dalle_quality_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb, shot_kb, angle_kb, lighting_kb, additional_settings_kb, imagen_format_kb, subject_type_kb, reference_upload_kb
+from keyboards import gpt_model_kb, image_engine_kb, dalle_model_kb, dalle_size_kb, dalle_quality_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb, shot_kb, angle_kb, lighting_kb, additional_settings_kb, imagen_format_kb, imagen_model_kb, subject_type_kb, reference_upload_kb
 from dream_api import generate_dream
 from dalle_api import generate_with_dalle
 from dalle_gen_helper import generate_dalle_image
@@ -1869,8 +1869,16 @@ async def callbacks(update, context):
             # DALL-E - показываем выбор модели DALL-E
             await query.edit_message_text("Выбери модель DALL-E:", reply_markup=dalle_model_kb())
         elif engine == "imagen":
-            # Nano Banana 4 (Google Imagen 4) - показываем выбор формата
-            await query.edit_message_text("🍌 Nano Banana 4\n\nВыбери формат изображения:", reply_markup=imagen_format_kb())
+            # Nano Banana 4 (Google Imagen 4) - показываем выбор модели
+            await query.edit_message_text(
+                "🍌 <b>Nano Banana (Imagen 4)</b>\n\n"
+                "Выберите версию модели:\n\n"
+                "🍌 <b>Стандарт</b> - баланс качества и скорости\n"
+                "💎 <b>Ultra</b> - максимальное качество (медленнее)\n"
+                "⚡ <b>Fast</b> - быстрая генерация",
+                reply_markup=imagen_model_kb(),
+                parse_mode="HTML"
+            )
         elif engine == "imagen3_custom":
             # Imagen 3 Customization - инициализация и выбор типа субъекта
             user_state[uid]["reference_images"] = []  # Инициализация списка референсов
@@ -1911,6 +1919,32 @@ async def callbacks(update, context):
         return
 
     # Обработка выбора формата Imagen
+    # Обработка выбора модели Imagen
+    if data.startswith("imagen_model_"):
+        model_type = data.replace("imagen_model_", "")
+
+        # Маппинг выбора в ключ модели
+        model_map = {
+            "standard": "imagen-4",
+            "ultra": "imagen-4-ultra",
+            "fast": "imagen-4-fast"
+        }
+
+        user_state[uid]["imagen_model"] = model_map.get(model_type, "imagen-4")
+
+        # Показываем выбор формата
+        model_names = {
+            "standard": "🍌 Imagen 4 (стандарт)",
+            "ultra": "💎 Imagen 4 Ultra",
+            "fast": "⚡ Imagen 4 Fast"
+        }
+
+        await query.edit_message_text(
+            f"{model_names.get(model_type, '🍌 Imagen 4')}\n\nВыбери формат изображения:",
+            reply_markup=imagen_format_kb()
+        )
+        return
+
     if data.startswith("imgfmt_"):
         imagen_format = data[7:]  # Убираем "imgfmt_"
         user_state[uid]["imagen_format"] = imagen_format
