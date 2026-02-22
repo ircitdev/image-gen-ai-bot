@@ -1109,8 +1109,8 @@ async def handle_message(update, context):
         # Обработка загрузки style_image
         if sg_state["step"] == "style_image" and update.message.photo:
             file = await update.message.photo[-1].get_file()
-            downloaded_file = await file.download_to_drive()
-            sg_state["style_image"] = downloaded_file
+            photo_bytes = await file.download_as_bytearray()
+            sg_state["style_image"] = BytesIO(photo_bytes)
             sg_state["step"] = "prompt"
             await update.message.reply_text(
                 "✅ Изображение стиля получено!\n\n"
