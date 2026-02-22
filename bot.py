@@ -53,13 +53,14 @@ from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, In
 from io import BytesIO
 from state import user_state
 from utils import extract_text_from_url
-from keyboards import gpt_model_kb, image_engine_kb, dalle_model_kb, dalle_size_kb, dalle_quality_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb, shot_kb, angle_kb, lighting_kb, additional_settings_kb, imagen_format_kb, imagen_model_kb, subject_type_kb, reference_upload_kb
+from keyboards import gpt_model_kb, image_engine_kb, dalle_model_kb, dalle_size_kb, dalle_quality_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb, shot_kb, angle_kb, lighting_kb, additional_settings_kb, imagen_format_kb, imagen_model_kb, subject_type_kb, reference_upload_kb, nbp_upload_kb
 from dream_api import generate_dream
 from dalle_api import generate_with_dalle
 from dalle_gen_helper import generate_dalle_image
 from imagen_api import generate_with_imagen
 from imagen_gen_helper import generate_imagen_image
 from imagen3_custom_helper import generate_imagen3_custom_image
+from nano_banana_pro_helper import generate_nano_banana_pro_image
 from openai_helper import build_final_prompt, enhance_prompt_for_generation, translate_to_english
 from style_transfer import apply_style_transfer
 from style_guide import generate_with_style_guide
@@ -872,6 +873,40 @@ async def handle_message(update, context):
                 await update.message.reply_text("❌ Ошибка добавления тегов")
         except Exception as e:
             await update.message.reply_text(f"❌ Ошибка: {e}")
+        return
+
+    # Проверяем, используется ли Nano Banana Pro - обработка загрузки референсных фото
+    if user_state.get(uid, {}).get("engine") == "nano_banana_pro" and update.message.photo:
+        # Скачиваем фото
+        photo = update.message.photo[-1]  # Берём самое большое
+        file = await photo.get_file()
+
+        # Загружаем в BytesIO
+        photo_bytes = await file.download_as_bytearray()
+        photo_io = BytesIO(photo_bytes)
+        photo_io.seek(0)
+
+        # Добавляем в список референсов
+        if "nbp_reference_images" not in user_state[uid]:
+            user_state[uid]["nbp_reference_images"] = []
+
+        if len(user_state[uid]["nbp_reference_images"]) < 4:
+            user_state[uid]["nbp_reference_images"].append(photo_io)
+            num_refs = len(user_state[uid]["nbp_reference_images"])
+
+            await update.message.reply_text(
+                f"✅ Фото {num_refs}/4 загружено!\n\n"
+                f"{'📤 Можете загрузить еще (макс 4) или ' if num_refs < 4 else ''}"
+                f"📝 Введите промпт для генерации",
+                reply_markup=nbp_upload_kb(num_refs),
+                parse_mode="HTML"
+            )
+        else:
+            await update.message.reply_text(
+                "⚠️ Максимум 4 фото!\n\n"
+                "📝 Введите промпт для генерации",
+                reply_markup=nbp_upload_kb(4)
+            )
         return
 
     # Проверяем, используется ли Imagen 3 Custom - обработка загрузки референсных фото
@@ -1693,6 +1728,16 @@ Quality: {st['quality']}"""
         )
         return
 
+    # Обработка промпта для Nano Banana Pro
+    if user_state.get(uid, {}).get("engine") == "nano_banana_pro":
+        user_state[uid]["prompt"] = text
+        # Показываем выбор формата
+        await update.message.reply_text(
+            "🍌💎 Nano Banana Pro\n\nВыбери формат изображения:",
+            reply_markup=imagen_format_kb()
+        )
+        return
+
     # Обработка промпта для Imagen 3 Custom
     if user_state.get(uid, {}).get("engine") == "imagen3_custom":
         if not user_state[uid].get("reference_images"):
@@ -1879,6 +1924,18 @@ async def callbacks(update, context):
                 reply_markup=imagen_model_kb(),
                 parse_mode="HTML"
             )
+        elif engine == "nano_banana_pro":
+            # Nano Banana Pro - инициализация
+            user_state[uid]["nbp_reference_images"] = []  # Инициализация списка референсов
+            await query.edit_message_text(
+                "🍌💎 <b>Nano Banana Pro</b>\n\n"
+                "Мультимодальная генерация с поддержкой референсных изображений.\n\n"
+                "📸 <b>Опционально:</b> Загрузите 1-4 фото для использования в качестве референса\n"
+                "💬 Или сразу введите промпт для обычной генерации\n\n"
+                "<i>Референсные изображения помогут модели понять желаемый стиль, композицию или объекты.</i>",
+                reply_markup=nbp_upload_kb(0),
+                parse_mode="HTML"
+            )
         elif engine == "imagen3_custom":
             # Imagen 3 Customization - инициализация и выбор типа субъекта
             user_state[uid]["reference_images"] = []  # Инициализация списка референсов
@@ -1950,10 +2007,35 @@ async def callbacks(update, context):
         user_state[uid]["imagen_format"] = imagen_format
 
         # Проверяем движок
-        if user_state[uid].get("engine") == "imagen3_custom":
+        engine = user_state[uid].get("engine")
+        if engine == "imagen3_custom":
             await generate_imagen3_custom_image(query, uid)
+        elif engine == "nano_banana_pro":
+            await generate_nano_banana_pro_image(query, uid)
         else:
             await generate_imagen_image(query, uid)
+        return
+
+    # Обработчики для Nano Banana Pro
+    if data == "nbp_clear":
+        user_state[uid]["nbp_reference_images"] = []
+        await query.edit_message_text(
+            "🗑 Референсы очищены!\n\n"
+            "📤 Загрузите фото или 📝 введите промпт",
+            reply_markup=nbp_upload_kb(0)
+        )
+        return
+
+    if data == "nbp_continue":
+        await query.edit_message_text(
+            "📝 Введите промпт для генерации\n\n"
+            f"Референсов загружено: {len(user_state[uid].get('nbp_reference_images', []))}"
+        )
+        return
+
+    if data == "nbp_noop":
+        # Ничего не делаем, просто информационная кнопка
+        await query.answer()
         return
 
     # Обработка выбора типа субъекта для Imagen 3 Custom
