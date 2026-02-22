@@ -1,9 +1,9 @@
 """
-Helper function for generating images with Google Imagen 3 (Nano Banana 3)
+Helper function for generating images with Google Imagen 4 (Nano Banana 4)
 """
 
 async def generate_imagen_image(query, uid):
-    """Генерирует изображение через Google Imagen 3 (Nano Banana 3)"""
+    """Генерирует изображение через Google Imagen 4 (Nano Banana 4)"""
     from state import user_state
     from user_limits import can_generate, use_generation
     from imagen_api import generate_with_imagen
@@ -39,10 +39,10 @@ async def generate_imagen_image(query, uid):
     # Сохраняем английский промпт
     st["last_english_prompt"] = english_prompt
 
-    await query.edit_message_text(f"🍌 Генерация через Nano Banana 3...\n\nФормат: {imagen_format}")
+    await query.edit_message_text(f"🍌 Генерация через Nano Banana 4...\n\nФормат: {imagen_format}")
 
     try:
-        # Генерируем через Imagen 3
+        # Генерируем через Imagen 4
         images = generate_with_imagen(english_prompt, imagen_format, 1)
 
         if not images:
@@ -72,7 +72,7 @@ async def generate_imagen_image(query, uid):
     # Отправляем изображение
     await query.message.reply_photo(
         photo=watermarked,
-        caption=f"🍌 <b>Nano Banana 3</b>\n\n"
+        caption=f"🍌 <b>Nano Banana 4</b>\n\n"
                 f"<b>Промпт:</b> {prompt}\n"
                 f"<b>Формат:</b> {imagen_format}\n\n"
                 f"💎 Осталось генераций: {remaining}",
@@ -81,17 +81,17 @@ async def generate_imagen_image(query, uid):
     )
 
     # Сохраняем в историю
-    add_to_history(uid, prompt, "imagen-3.0", "Nano Banana 3")
+    add_to_history(uid, prompt, "imagen-4.0", "Nano Banana 4")
 
     # Логируем в Google Sheets
     try:
-        gsl.log_generation(uid, prompt, "imagen-3.0-generate-001", imagen_format, "Nano Banana 3")
+        gsl.log_generation(uid, prompt, "imagen-4.0-generate-001", imagen_format, "Nano Banana 4")
     except Exception as e:
         print(f"[GSL Error] {e}")
 
     # Сохраняем параметры для повторной генерации
     st["saved_params"] = {
-        "model": "imagen-3.0-generate-001",
+        "model": "imagen-4.0-generate-001",
         "engine": "imagen",
         "format": imagen_format
     }

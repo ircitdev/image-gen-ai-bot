@@ -1,14 +1,65 @@
+import sys
+import os
+import fcntl
+import atexit
+
+# ===== ЗАЩИТА ОТ ЗАПУСКА НЕСКОЛЬКИХ КОПИЙ =====
+LOCK_FILE = "/tmp/imagegen_bot.lock"
+
+def acquire_lock():
+    """Получает блокировку для предотвращения запуска нескольких копий бота"""
+    global lock_file_handle
+    try:
+        lock_file_handle = open(LOCK_FILE, 'w')
+        fcntl.flock(lock_file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_file_handle.write(str(os.getpid()))
+        lock_file_handle.flush()
+        print(f"[LOCK] Bot lock acquired, PID: {os.getpid()}")
+        return True
+    except IOError:
+        # Читаем PID запущенного процесса
+        try:
+            with open(LOCK_FILE, 'r') as f:
+                existing_pid = f.read().strip()
+            print(f"[LOCK ERROR] Bot is already running! PID: {existing_pid}")
+        except:
+            print("[LOCK ERROR] Bot is already running!")
+        return False
+
+def release_lock():
+    """Освобождает блокировку при завершении"""
+    global lock_file_handle
+    try:
+        if lock_file_handle:
+            fcntl.flock(lock_file_handle, fcntl.LOCK_UN)
+            lock_file_handle.close()
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+        print("[LOCK] Bot lock released")
+    except:
+        pass
+
+# Проверяем блокировку при старте
+if not acquire_lock():
+    print("Exiting: another instance is running")
+    sys.exit(1)
+
+# Регистрируем освобождение блокировки при выходе
+atexit.register(release_lock)
+# ===== КОНЕЦ ЗАЩИТЫ =====
+
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, InlineQueryHandler, PreCheckoutQueryHandler, filters
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from io import BytesIO
 from state import user_state
 from utils import extract_text_from_url
-from keyboards import gpt_model_kb, image_engine_kb, dalle_model_kb, dalle_size_kb, dalle_quality_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb, shot_kb, angle_kb, lighting_kb, additional_settings_kb, imagen_format_kb
+from keyboards import gpt_model_kb, image_engine_kb, dalle_model_kb, dalle_size_kb, dalle_quality_kb, model_kb, format_kb, style_kb, confirm_kb, actions_kb, summary_kb, negative_prompt_kb, presets_main_kb, presets_list_kb, preset_actions_kb, packages_kb, payment_method_kb, edit_actions_kb, skip_kb, aspect_ratio_kb, fidelity_kb, style_guide_regenerate_kb, shot_kb, angle_kb, lighting_kb, additional_settings_kb, imagen_format_kb, subject_type_kb, reference_upload_kb
 from dream_api import generate_dream
 from dalle_api import generate_with_dalle
 from dalle_gen_helper import generate_dalle_image
 from imagen_api import generate_with_imagen
 from imagen_gen_helper import generate_imagen_image
+from imagen3_custom_helper import generate_imagen3_custom_image
 from openai_helper import build_final_prompt, enhance_prompt_for_generation, translate_to_english
 from style_transfer import apply_style_transfer
 from style_guide import generate_with_style_guide
@@ -823,6 +874,35 @@ async def handle_message(update, context):
             await update.message.reply_text(f"❌ Ошибка: {e}")
         return
 
+    # Проверяем, используется ли Imagen 3 Custom - обработка загрузки референсных фото
+    if user_state.get(uid, {}).get("engine") == "imagen3_custom" and update.message.photo:
+        # Скачиваем фото
+        photo = update.message.photo[-1]  # Берём самое большое
+        file = await photo.get_file()
+
+        # Загружаем в BytesIO
+        photo_bytes = await file.download_as_bytearray()
+        photo_io = BytesIO(photo_bytes)
+        photo_io.seek(0)
+
+        # Добавляем в список референсов
+        if "reference_images" not in user_state[uid]:
+            user_state[uid]["reference_images"] = []
+
+        user_state[uid]["reference_images"].append(photo_io)
+
+        num_refs = len(user_state[uid]["reference_images"])
+
+        await update.message.reply_text(
+            f"✅ Фото {num_refs}/4 загружено!\n\n"
+            f"{'📤 Отправьте еще фото (макс 4) или ' if num_refs < 4 else ''}"
+            f"💬 Введите промпт для генерации\n\n"
+            f"<i>Используйте [1], [2]... в промпте для ссылки на фото</i>",
+            reply_markup=reference_upload_kb(),
+            parse_mode="HTML"
+        )
+        return
+
     # Проверяем режим /editmy
     if user_state.get(uid, {}).get("mode") == "editmy" and update.message.photo:
         # Загружаем фото
@@ -833,7 +913,7 @@ async def handle_message(update, context):
 
         # Сохраняем изображение в состоянии
         user_state[uid]["edit_image"] = photo_io
-        
+
         # Сохраняем загруженное изображение в библиотеку
         if USE_GCS:
             try:
@@ -1613,6 +1693,24 @@ Quality: {st['quality']}"""
         )
         return
 
+    # Обработка промпта для Imagen 3 Custom
+    if user_state.get(uid, {}).get("engine") == "imagen3_custom":
+        if not user_state[uid].get("reference_images"):
+            await update.message.reply_text(
+                "❌ Сначала загрузите референсные фото!",
+                reply_markup=subject_type_kb()
+            )
+            return
+
+        user_state[uid]["prompt"] = text
+
+        # Спрашиваем формат
+        await update.message.reply_text(
+            "📐 Выберите формат изображения:",
+            reply_markup=imagen_format_kb()
+        )
+        return
+
     # Обычный новый запрос
     if text.startswith("http"):
         await update.message.reply_text("🔍 Анализирую страницу с помощью ChatGPT...")
@@ -1771,8 +1869,18 @@ async def callbacks(update, context):
             # DALL-E - показываем выбор модели DALL-E
             await query.edit_message_text("Выбери модель DALL-E:", reply_markup=dalle_model_kb())
         elif engine == "imagen":
-            # Nano Banana 3 (Google Imagen 3) - показываем выбор формата
-            await query.edit_message_text("🍌 Nano Banana 3\n\nВыбери формат изображения:", reply_markup=imagen_format_kb())
+            # Nano Banana 4 (Google Imagen 4) - показываем выбор формата
+            await query.edit_message_text("🍌 Nano Banana 4\n\nВыбери формат изображения:", reply_markup=imagen_format_kb())
+        elif engine == "imagen3_custom":
+            # Imagen 3 Customization - инициализация и выбор типа субъекта
+            user_state[uid]["reference_images"] = []  # Инициализация списка референсов
+            await query.edit_message_text(
+                "👤 <b>Imagen 3 Customization</b>\n\n"
+                "Генерация изображений на основе референсного фото.\n\n"
+                "📸 <b>Шаг 1:</b> Выберите тип субъекта",
+                reply_markup=subject_type_kb(),
+                parse_mode="HTML"
+            )
         return
 
     # Обработка выбора модели DALL-E
@@ -1802,11 +1910,68 @@ async def callbacks(update, context):
         await generate_dalle_image(query, uid)
         return
 
-    # Обработка выбора формата Imagen 3 (Nano Banana 3)
+    # Обработка выбора формата Imagen
     if data.startswith("imgfmt_"):
         imagen_format = data[7:]  # Убираем "imgfmt_"
         user_state[uid]["imagen_format"] = imagen_format
-        await generate_imagen_image(query, uid)
+
+        # Проверяем движок
+        if user_state[uid].get("engine") == "imagen3_custom":
+            await generate_imagen3_custom_image(query, uid)
+        else:
+            await generate_imagen_image(query, uid)
+        return
+
+    # Обработка выбора типа субъекта для Imagen 3 Custom
+    if data.startswith("subject_"):
+        subject = data.replace("subject_", "")
+        user_state[uid]["subject_type"] = subject
+
+        subject_names = {
+            "person": "Человек 👤",
+            "animal": "Животное 🐾",
+            "product": "Продукт 📦",
+            "default": "Другое 🎨"
+        }
+
+        await query.edit_message_text(
+            f"✅ Выбран тип: <b>{subject_names.get(subject, 'Unknown')}</b>\n\n"
+            f"📤 <b>Шаг 2:</b> Отправьте 1-4 референсных фото\n\n"
+            f"<b>Требования к фото:</b>\n"
+            f"• Объект по центру, занимает >50% кадра\n"
+            f"• Хорошее освещение\n"
+            f"• Фронтальный ракурс\n"
+            f"• Без препятствий (очки, маски и т.д.)\n\n"
+            f"После загрузки фото введите промпт для генерации.",
+            reply_markup=reference_upload_kb(),
+            parse_mode="HTML"
+        )
+        return
+
+    # Обработка кнопок управления референсами
+    if data == "ref_clear":
+        user_state[uid]["reference_images"] = []
+        await query.edit_message_text(
+            "🗑 Референсы очищены.\n\n"
+            "📤 Отправьте новые фото для генерации.",
+            reply_markup=reference_upload_kb(),
+            parse_mode="HTML"
+        )
+        return
+
+    if data == "ref_done":
+        if not user_state[uid].get("reference_images"):
+            await query.answer("❌ Сначала загрузите хотя бы 1 фото!", show_alert=True)
+            return
+
+        await query.edit_message_text(
+            f"✅ Загружено фото: {len(user_state[uid].get('reference_images', []))}\n\n"
+            f"📝 Теперь отправьте промпт для генерации.\n\n"
+            f"<b>Пример:</b>\n"
+            f"<i>standing on a beach at sunset</i>\n\n"
+            f"Маркер [1] будет добавлен автоматически.",
+            parse_mode="HTML"
+        )
         return
 
     # Обработка выбора GPT модели
@@ -3991,7 +4156,26 @@ def main():
     print("Bot started successfully...")
     print("Inline mode enabled - users can use @botname in any chat")
     print("Payment system enabled - Telegram Stars + CryptoBot")
-    app.run_polling()
+
+    # Запуск с обработкой конфликта Telegram API
+    import time
+    from telegram.error import Conflict
+
+    max_retries = 5
+    retry_delay = 10  # секунд
+
+    for attempt in range(max_retries):
+        try:
+            app.run_polling(drop_pending_updates=True)
+            break
+        except Conflict as e:
+            if attempt < max_retries - 1:
+                print(f"[CONFLICT] Telegram API conflict detected. Retry {attempt + 1}/{max_retries} in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Увеличиваем задержку при каждой попытке
+            else:
+                print(f"[CONFLICT] Failed after {max_retries} attempts. Exiting.")
+                raise
 
 if __name__ == "__main__":
     main()

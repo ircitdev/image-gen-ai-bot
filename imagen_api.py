@@ -1,6 +1,7 @@
 """
-Google AI Studio Imagen 3 API Integration
-Model: imagen-3.0-generate-001 (Nano Banana 3)
+Google AI Studio Imagen 4 API Integration
+Model: imagen-4.0-generate-001 (Nano Banana 4)
+Uses Gemini API predict endpoint
 """
 
 import requests
@@ -8,8 +9,8 @@ import base64
 from io import BytesIO
 from settings import GOOGLE_AI_API_KEY
 
-# Imagen 3 API endpoint
-IMAGEN_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict"
+# Imagen 4 API endpoint - predict (актуальная модель)
+IMAGEN_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict"
 
 # Маппинг форматов из нашего бота в форматы Imagen
 ASPECT_RATIO_MAP = {
@@ -48,11 +49,14 @@ def generate_with_imagen(prompt: str, aspect_ratio: str = "1:1", num_images: int
     # Ограничиваем количество изображений
     num_images = min(max(1, num_images), 4)
 
+    # URL с API ключом как query параметр
+    url = f"{IMAGEN_API_URL}?key={GOOGLE_AI_API_KEY}"
+
     headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": GOOGLE_AI_API_KEY
+        "Content-Type": "application/json"
     }
 
+    # Формат запроса для predict endpoint (Imagen 4)
     payload = {
         "instances": [
             {
@@ -70,7 +74,7 @@ def generate_with_imagen(prompt: str, aspect_ratio: str = "1:1", num_images: int
 
     try:
         response = requests.post(
-            IMAGEN_API_URL,
+            url,
             headers=headers,
             json=payload,
             timeout=120  # 2 минуты таймаут
@@ -85,7 +89,7 @@ def generate_with_imagen(prompt: str, aspect_ratio: str = "1:1", num_images: int
 
         data = response.json()
 
-        # Извлекаем изображения из ответа
+        # Извлекаем изображения из ответа (формат predict)
         images = []
         predictions = data.get("predictions", [])
 

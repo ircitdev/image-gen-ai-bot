@@ -12,7 +12,8 @@ def image_engine_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🎨 Stable Diffusion 3.5", callback_data="engine_sd")],
         [InlineKeyboardButton("🤖 DALL-E (ChatGPT)", callback_data="engine_dalle")],
-        [InlineKeyboardButton("🍌 Nano Banana 3", callback_data="engine_imagen")]
+        [InlineKeyboardButton("🍌 Nano Banana 4", callback_data="engine_imagen")],
+        [InlineKeyboardButton("👤 Imagen 3 Custom (с фото)", callback_data="engine_imagen3_custom")]
     ])
 
 def imagen_format_kb():
@@ -295,4 +296,21 @@ def style_guide_regenerate_kb():
     """Кнопка для новой генерации в том же стиле"""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔄 Новая генерация в этом стиле", callback_data="sg_regenerate")]
+    ])
+
+def subject_type_kb():
+    """Клавиатура для выбора типа субъекта для Imagen 3 Customization"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("👤 Человек", callback_data="subject_person")],
+        [InlineKeyboardButton("🐾 Животное", callback_data="subject_animal")],
+        [InlineKeyboardButton("📦 Продукт", callback_data="subject_product")],
+        [InlineKeyboardButton("🎨 Другое", callback_data="subject_default")]
+    ])
+
+def reference_upload_kb():
+    """Клавиатура для управления референсными изображениями"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📤 Загрузить фото (1-4 шт)", callback_data="ref_upload")],
+        [InlineKeyboardButton("✅ Готово, начать генерацию", callback_data="ref_done")],
+        [InlineKeyboardButton("🗑 Очистить референсы", callback_data="ref_clear")]
     ])
