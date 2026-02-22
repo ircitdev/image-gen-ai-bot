@@ -12,8 +12,8 @@ def image_engine_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🎨 Stable Diffusion 3.5", callback_data="engine_sd")],
         [InlineKeyboardButton("🤖 DALL-E (ChatGPT)", callback_data="engine_dalle")],
-        [InlineKeyboardButton("🍌 Nano Banana 4", callback_data="engine_imagen")],
-        [InlineKeyboardButton("👤 Imagen 3 Custom (с фото)", callback_data="engine_imagen3_custom")]
+        [InlineKeyboardButton("🍌 Nano Banana 4", callback_data="engine_imagen")]
+        # [InlineKeyboardButton("👤 Imagen 3 Custom (с фото)", callback_data="engine_imagen3_custom")]  # ВРЕМЕННО ОТКЛЮЧЕНО - API недоступен
     ])
 
 def imagen_format_kb():

@@ -9,8 +9,10 @@ import base64
 from io import BytesIO
 from settings import GOOGLE_AI_API_KEY
 
-# Imagen 3 Customization API endpoint
-IMAGEN3_CUSTOM_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-capability-001:predict"
+# ВРЕМЕННО ОТКЛЮЧЕНО: Imagen 3 Custom API не доступен
+# Google изменил API, модель imagen-3.0-capability-001 больше не поддерживается
+# Нужно найти актуальную модель или использовать другой endpoint
+IMAGEN3_CUSTOM_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict"
 
 # Маппинг форматов
 ASPECT_RATIO_MAP = {
@@ -49,6 +51,16 @@ def generate_with_imagen3_custom(
     Returns:
         Список BytesIO объектов с сгенерированными изображениями
     """
+    # ВРЕМЕННОЕ ОТКЛЮЧЕНИЕ
+    raise Exception(
+        "⚠️ Imagen 3 Custom временно недоступен\n\n"
+        "Google изменил API, модель imagen-3.0-capability-001 больше не поддерживается.\n"
+        "Пожалуйста, используйте другие движки:\n"
+        "• 🍌 Nano Banana 4 (Imagen 4) - text-to-image\n"
+        "• 🤖 DALL-E 3 - text-to-image\n"
+        "• 🎨 Stable Diffusion 3.5 - text-to-image"
+    )
+
     if not GOOGLE_AI_API_KEY:
         raise ValueError("GOOGLE_AI_API_KEY not configured")
 
