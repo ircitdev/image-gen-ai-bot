@@ -71,8 +71,8 @@ def generate_with_nano_banana_pro(
             img_base64 = base64.b64encode(img_bytes).decode('utf-8')
 
             parts.append({
-                "inline_data": {
-                    "mime_type": "image/png",
+                "inlineData": {
+                    "mimeType": "image/png",
                     "data": img_base64
                 }
             })
@@ -101,7 +101,9 @@ def generate_with_nano_banana_pro(
             "topK": 64,
             "candidateCount": num_images,
             "responseModalities": ["image"],  # Генерируем изображения
-            "aspectRatio": imagen_ratio
+            "imageConfig": {
+                "aspectRatio": imagen_ratio
+            }
         }
     }
 
@@ -136,9 +138,9 @@ def generate_with_nano_banana_pro(
             parts = content.get("parts", [])
 
             for part in parts:
-                # Изображение может быть в inline_data
-                if "inline_data" in part:
-                    image_b64 = part["inline_data"].get("data")
+                # Изображение может быть в inlineData (camelCase)
+                if "inlineData" in part:
+                    image_b64 = part["inlineData"].get("data")
                     if image_b64:
                         image_bytes = base64.b64decode(image_b64)
                         images.append(BytesIO(image_bytes))
