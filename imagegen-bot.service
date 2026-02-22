@@ -1,0 +1,24 @@
+[Unit]
+Description=USP ImageGen Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/bots/usp
+ExecStartPre=/bin/rm -f /tmp/imagegen_bot.lock
+ExecStart=/usr/bin/python3 /root/bots/usp/bot.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/root/bots/usp/bot.log
+StandardError=append:/root/bots/usp/bot.log
+
+# Ограничения для безопасности
+LimitNOFILE=65536
+TimeoutStopSec=30
+
+# Переменные окружения (если нужны)
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
