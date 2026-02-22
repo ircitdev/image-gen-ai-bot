@@ -43,6 +43,13 @@ def get_user_generations(user_id):
 
 def can_generate(user_id):
     """Проверяет, может ли пользователь генерировать изображение"""
+    limits = load_limits()
+    user_key = str(user_id)
+
+    # Премиум пользователи имеют неограниченные генерации
+    if user_key in limits and limits[user_key].get("premium", False):
+        return True, 999999  # Неограниченно
+
     used = get_user_generations(user_id)
     remaining = FREE_GENERATIONS_LIMIT - used
     return remaining > 0, remaining
@@ -88,14 +95,19 @@ def get_user_stats(user_id):
         return {
             "used": 0,
             "remaining": FREE_GENERATIONS_LIMIT,
-            "first_generation": None
+            "first_generation": None,
+            "premium": False
         }
 
     used = limits[user_key]["used"]
+    is_premium = limits[user_key].get("premium", False)
+
     return {
         "used": used,
-        "remaining": FREE_GENERATIONS_LIMIT - used,
-        "first_generation": limits[user_key].get("first_generation")
+        "remaining": 999999 if is_premium else (FREE_GENERATIONS_LIMIT - used),
+        "first_generation": limits[user_key].get("first_generation"),
+        "premium": is_premium,
+        "premium_since": limits[user_key].get("premium_since")
     }
 
 
@@ -156,6 +168,29 @@ def add_generations(user_id, amount):
 
     remaining = FREE_GENERATIONS_LIMIT - limits[user_key]["used"]
     return remaining
+
+
+def set_premium(user_id, is_premium=True):
+    """Устанавливает премиум статус пользователю (для админа)"""
+    limits = load_limits()
+    user_key = str(user_id)
+
+    if user_key not in limits:
+        limits[user_key] = {
+            "used": 0,
+            "first_generation": None,
+            "referrer_id": None,
+            "referrals": []
+        }
+
+    limits[user_key]["premium"] = is_premium
+    if is_premium:
+        limits[user_key]["premium_since"] = datetime.now().isoformat()
+    else:
+        limits[user_key].pop("premium_since", None)
+
+    save_limits(limits)
+    return True
 
 
 def register_referral(user_id, referrer_id):
