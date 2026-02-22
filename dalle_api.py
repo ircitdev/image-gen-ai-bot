@@ -1,5 +1,11 @@
 """
-Модуль для генерации изображений через OpenAI DALL-E
+Модуль для генерации изображений через OpenAI
+Поддерживаемые модели:
+- GPT Image 1.5 (gpt-image-1.5) - Latest, fastest, cheapest
+- GPT Image 1 (gpt-image-1) - Previous generation
+- GPT Image 1 Mini (gpt-image-1-mini) - Lightweight version
+- DALL-E 3 (dall-e-3) - Deprecated (until May 12, 2026)
+- DALL-E 2 (dall-e-2) - Deprecated (until May 12, 2026)
 """
 import requests
 import io
@@ -8,17 +14,23 @@ from settings import OPENAI_API_KEY
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-def generate_with_dalle(prompt: str, model: str = "dall-e-3", size: str = "1024x1024", quality: str = "standard"):
+def generate_with_dalle(prompt: str, model: str = "gpt-image-1.5", size: str = "1024x1024", quality: str = "standard"):
     """
-    Генерирует изображение через DALL-E API
+    Генерирует изображение через OpenAI Image API
 
     Args:
         prompt: Текстовый промпт на английском
-        model: Модель DALL-E (dall-e-2 или dall-e-3)
+        model: Модель для генерации
+            - gpt-image-1.5: Latest, 4x faster, 20% cheaper
+            - gpt-image-1: Previous generation GPT Image
+            - gpt-image-1-mini: Lightweight version
+            - dall-e-3: Deprecated (until May 12, 2026)
+            - dall-e-2: Deprecated (until May 12, 2026)
         size: Размер изображения
+            - GPT Image 1.5/1: 1024x1024, 1024x1792 (portrait), 1792x1024 (landscape)
             - DALL-E 3: 1024x1024, 1024x1792 (portrait), 1792x1024 (landscape)
             - DALL-E 2: 256x256, 512x512, 1024x1024
-        quality: Качество (standard или hd) - только для DALL-E 3
+        quality: Качество (standard или hd) - для DALL-E 3 и GPT Image
 
     Returns:
         BytesIO объект с изображением или строка с ошибкой
@@ -38,8 +50,8 @@ def generate_with_dalle(prompt: str, model: str = "dall-e-3", size: str = "1024x
             "size": size
         }
 
-        # Качество только для DALL-E 3
-        if model == "dall-e-3":
+        # Качество для DALL-E 3 и GPT Image моделей
+        if model in ["dall-e-3", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"]:
             params["quality"] = quality
 
         # Генерируем изображение
@@ -72,15 +84,16 @@ def generate_with_dalle(prompt: str, model: str = "dall-e-3", size: str = "1024x
 
 def get_dalle_sizes(model: str):
     """
-    Возвращает доступные размеры для выбранной модели DALL-E
+    Возвращает доступные размеры для выбранной модели OpenAI
 
     Args:
-        model: dall-e-2 или dall-e-3
+        model: gpt-image-1.5, gpt-image-1, gpt-image-1-mini, dall-e-2 или dall-e-3
 
     Returns:
         Список кортежей (display_name, size_value)
     """
-    if model == "dall-e-3":
+    # GPT Image и DALL-E 3 поддерживают одинаковые размеры
+    if model in ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-3"]:
         return [
             ("Квадрат (1024x1024)", "1024x1024"),
             ("Портрет (1024x1792)", "1024x1792"),

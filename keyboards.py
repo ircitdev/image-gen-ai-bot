@@ -36,15 +36,18 @@ def imagen_format_kb():
     ])
 
 def dalle_model_kb():
-    """Клавиатура для выбора модели DALL-E"""
+    """Клавиатура для выбора модели OpenAI Image Generation"""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("DALL-E 3 (Лучшее качество)", callback_data="dallemodel_dall-e-3")],
-        [InlineKeyboardButton("DALL-E 2 (Быстрее)", callback_data="dallemodel_dall-e-2")]
+        [InlineKeyboardButton("⚡ GPT Image 1.5 (Новейшая, быстрая)", callback_data="dallemodel_gpt-image-1.5")],
+        [InlineKeyboardButton("🎨 GPT Image 1 (Продвинутая)", callback_data="dallemodel_gpt-image-1")],
+        [InlineKeyboardButton("💨 GPT Image Mini (Легкая)", callback_data="dallemodel_gpt-image-1-mini")],
+        [InlineKeyboardButton("📦 DALL-E 3 (Устарела)", callback_data="dallemodel_dall-e-3")],
+        [InlineKeyboardButton("🗂 DALL-E 2 (Устарела)", callback_data="dallemodel_dall-e-2")]
     ])
 
-def dalle_size_kb(model="dall-e-3"):
-    """Клавиатура для выбора размера DALL-E изображения"""
-    if model == "dall-e-3":
+def dalle_size_kb(model="gpt-image-1.5"):
+    """Клавиатура для выбора размера изображения OpenAI"""
+    if model in ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-3"]:
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("Квадрат 1024x1024", callback_data="dallesize_1024x1024")],
             [InlineKeyboardButton("Портрет 1024x1792", callback_data="dallesize_1024x1792")],

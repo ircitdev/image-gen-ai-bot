@@ -1,5 +1,5 @@
 async def generate_dalle_image(query, uid):
-    """Генерирует изображение через DALL-E"""
+    """Генерирует изображение через OpenAI (GPT Image / DALL-E)"""
     from state import user_state
     from user_limits import can_generate, use_generation
     from dalle_api import generate_with_dalle
@@ -12,7 +12,7 @@ async def generate_dalle_image(query, uid):
 
     # Получаем параметры
     prompt = st.get("prompt", "")
-    dalle_model = st.get("dalle_model", "dall-e-3")
+    dalle_model = st.get("dalle_model", "gpt-image-1.5")  # Новая модель по умолчанию
     dalle_size = st.get("dalle_size", "1024x1024")
     dalle_quality = st.get("dalle_quality", "standard")
 
@@ -33,7 +33,24 @@ async def generate_dalle_image(query, uid):
     await query.edit_message_text("⏳ Перевод промпта с помощью ChatGPT...")
     english_prompt = translate_to_english(prompt, gpt_model)
 
-    await query.edit_message_text(f"⏳ Генерация изображения через {dalle_model.upper()}...")
+    # Эмодзи для разных моделей
+    model_emoji = {
+        "gpt-image-1.5": "⚡",
+        "gpt-image-1": "🎨",
+        "gpt-image-1-mini": "💨",
+        "dall-e-3": "📦",
+        "dall-e-2": "🗂"
+    }.get(dalle_model, "🖼")
+
+    model_name = {
+        "gpt-image-1.5": "GPT Image 1.5",
+        "gpt-image-1": "GPT Image 1",
+        "gpt-image-1-mini": "GPT Image Mini",
+        "dall-e-3": "DALL-E 3",
+        "dall-e-2": "DALL-E 2"
+    }.get(dalle_model, dalle_model.upper())
+
+    await query.edit_message_text(f"{model_emoji} Генерация изображения через {model_name}...")
 
     # Генерируем через DALL-E
     result = generate_with_dalle(english_prompt, dalle_model, dalle_size, dalle_quality)
@@ -53,9 +70,8 @@ async def generate_dalle_image(query, uid):
     # Отправляем изображение
     await query.message.reply_photo(
         photo=watermarked,
-        caption=f"✅ Изображение создано!\n\n"
+        caption=f"{model_emoji} <b>{model_name}</b>\n\n"
                 f"<b>Промпт:</b> {prompt}\n"
-                f"<b>Модель:</b> {dalle_model}\n"
                 f"<b>Размер:</b> {dalle_size}\n"
                 f"<b>Качество:</b> {dalle_quality}\n\n"
                 f"💎 Осталось генераций: {remaining}",
@@ -64,7 +80,7 @@ async def generate_dalle_image(query, uid):
     )
 
     # Сохраняем в историю
-    add_to_history(uid, prompt, dalle_model, "DALL-E")
+    add_to_history(uid, prompt, dalle_model, model_name)
 
     # Сохраняем параметры для повторной генерации
     st["saved_params"] = {
