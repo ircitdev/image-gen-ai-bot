@@ -1,0 +1,105 @@
+# Новый обработчик для Style Transfer (заменить в bot.py начиная с линии ~1070)
+
+        # Обработка текстовых параметров для Style Transfer с Imagen
+        if st_state["step"] == "prompt":
+            text = update.message.text.strip()
+            prompt = text if text and text != "-" else ""
+
+            # Переводим промпт на английский если указан
+            if prompt:
+                await update.message.reply_text("⏳ Перевод промпта...")
+                prompt = translate_to_english(prompt, "gpt-4o")
+
+            # Запускаем генерацию через Imagen
+            await update.message.reply_text(
+                "🍌💎 <b>Применение стиля через Nano Banana Pro...</b>\n\n"
+                "Это может занять 30-60 секунд...",
+                parse_mode="HTML"
+            )
+
+            try:
+                # Используем Nano Banana Pro для style transfer
+                result = apply_style_transfer_imagen(
+                    init_image=st_state["init_image"],
+                    style_image=st_state["style_image"],
+                    prompt=prompt,
+                    aspect_ratio="1:1"
+                )
+
+                if result and len(result) > 0:
+                    # Успех - отправляем изображение с watermark
+                    result[0].seek(0)
+                    watermarked_image = add_watermark(result[0])
+                    await context.bot.send_photo(uid, watermarked_image)
+                    await context.bot.send_message(
+                        uid,
+                        "✅ <b>Style Transfer завершен!</b>\n\n"
+                        "🍌💎 Использован Nano Banana Pro (Google Imagen 3)",
+                        parse_mode="HTML"
+                    )
+                else:
+                    await update.message.reply_text("❌ Не удалось применить стиль")
+
+            except Exception as e:
+                error_msg = str(e)
+                print(f"[Style Transfer Error] {error_msg}")
+                await update.message.reply_text(f"❌ Ошибка: {error_msg}")
+
+            # Очищаем состояние
+            user_state[uid]["style_transfer"] = {"active": False}
+            return
+
+
+# Новый обработчик для Style Guide (найти аналогичный блок и заменить)
+
+        # Обработка промпта для Style Guide с Imagen
+        if sg_state["step"] == "prompt":
+            text = update.message.text.strip()
+
+            if not text or text == "-":
+                await update.message.reply_text("❌ Промпт обязателен для Style Guide")
+                return
+
+            prompt = text
+
+            # Переводим промпт на английский
+            await update.message.reply_text("⏳ Перевод промпта...")
+            prompt = translate_to_english(prompt, "gpt-4o")
+
+            # Запускаем генерацию через Imagen
+            await update.message.reply_text(
+                "🍌💎 <b>Генерация по стилю через Nano Banana Pro...</b>\n\n"
+                "Это может занять 30-60 секунд...",
+                parse_mode="HTML"
+            )
+
+            try:
+                # Используем Nano Banana Pro для style guide
+                result = generate_with_style_guide_imagen(
+                    style_image=sg_state["style_image"],
+                    prompt=prompt,
+                    aspect_ratio="1:1"
+                )
+
+                if result and len(result) > 0:
+                    # Успех - отправляем изображение с watermark
+                    result[0].seek(0)
+                    watermarked_image = add_watermark(result[0])
+                    await context.bot.send_photo(uid, watermarked_image)
+                    await context.bot.send_message(
+                        uid,
+                        "✅ <b>Style Guide завершен!</b>\n\n"
+                        "🍌💎 Использован Nano Banana Pro (Google Imagen 3)",
+                        parse_mode="HTML"
+                    )
+                else:
+                    await update.message.reply_text("❌ Не удалось создать изображение")
+
+            except Exception as e:
+                error_msg = str(e)
+                print(f"[Style Guide Error] {error_msg}")
+                await update.message.reply_text(f"❌ Ошибка: {error_msg}")
+
+            # Очищаем состояние
+            user_state[uid]["style_guide"] = {"active": False}
+            return

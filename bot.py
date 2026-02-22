@@ -63,8 +63,9 @@ from imagen3_custom_helper import generate_imagen3_custom_image
 from nano_banana_pro_helper import generate_nano_banana_pro_image
 from gemini_vision_api import analyze_image_for_prompt
 from openai_helper import build_final_prompt, enhance_prompt_for_generation, translate_to_english
-from style_transfer import apply_style_transfer
-from style_guide import generate_with_style_guide
+from style_transfer import apply_style_transfer  # Legacy Stability AI
+from style_guide import generate_with_style_guide  # Legacy Stability AI
+from style_transfer_imagen import apply_style_transfer_imagen, generate_with_style_guide_imagen
 from sketch import generate_from_sketch
 from user_limits import can_generate, use_generation, get_user_stats, get_all_users, add_generations, register_referral, reward_referrer, get_referral_stats
 from image_library import add_to_history, get_user_history, get_favorites, toggle_favorite, search_history, get_history_stats, clear_history
@@ -1040,12 +1041,12 @@ async def handle_message(update, context):
         # Обработка загрузки init_image
         if st_state["step"] == "init_image" and update.message.photo:
             file = await update.message.photo[-1].get_file()
-            downloaded_file = await file.download_to_drive()
-            st_state["init_image"] = downloaded_file
+            photo_bytes = await file.download_as_bytearray()
+            st_state["init_image"] = BytesIO(photo_bytes)
             st_state["step"] = "style_image"
             await update.message.reply_text(
                 "✅ Исходное изображение получено!\n\n"
-                "<b>Шаг 2/2:</b> Теперь загрузите изображение, стиль которого нужно скопировать.",
+                "<b>Шаг 2/3:</b> Теперь загрузите изображение, стиль которого нужно скопировать.",
                 parse_mode="HTML"
             )
             return
@@ -1053,13 +1054,12 @@ async def handle_message(update, context):
         # Обработка загрузки style_image
         if st_state["step"] == "style_image" and update.message.photo:
             file = await update.message.photo[-1].get_file()
-            downloaded_file = await file.download_to_drive()
-            st_state["style_image"] = downloaded_file
+            photo_bytes = await file.download_as_bytearray()
+            st_state["style_image"] = BytesIO(photo_bytes)
             st_state["step"] = "prompt"
             await update.message.reply_text(
                 "✅ Изображение стиля получено!\n\n"
-                "Теперь введите параметры:\n\n"
-                "<b>Prompt</b> (текстовое описание, можно оставить пустым):\n"
+                "<b>Шаг 3/3:</b> Введите промпт (опционально):\n\n"
                 "Отправьте текст или '-' для пропуска.",
                 parse_mode="HTML"
             )
